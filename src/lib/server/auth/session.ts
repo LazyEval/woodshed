@@ -1,7 +1,13 @@
 import { eq, lte } from 'drizzle-orm';
-import type { Deps } from '../deps';
-import { sessions } from '../db/schema';
-import { hmacSha256, randomToken, sha256Hex, timingSafeEqual, toBase64Url } from './crypto';
+import type { Deps } from '#lib/server/deps.js';
+import { sessions } from '#lib/server/db/schema.js';
+import {
+	hmacSha256,
+	randomToken,
+	sha256Hex,
+	timingSafeEqual,
+	toBase64Url
+} from '#lib/server/auth/crypto.js';
 
 export const COOKIE_NAME = '__Host-session';
 export const SESSION_TTL_SECONDS = 180 * 24 * 60 * 60;

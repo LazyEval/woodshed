@@ -1,6 +1,6 @@
-import { unconfiguredAiClient, type AiClient } from './ai';
-import { systemClock, type Clock } from './clock';
-import { createDb, type Db } from './db';
+import { unconfiguredAiClient, type AiClient } from '#lib/server/ai.js';
+import { systemClock, type Clock } from '#lib/server/clock.js';
+import { createDb, type Db } from '#lib/server/db/index.js';
 
 export interface Deps {
 	db: Db;

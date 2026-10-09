@@ -1,6 +1,6 @@
-import type { Deps } from './deps';
-import { secretsMatch } from './auth/crypto';
-import { clearFailures, isRateLimited, recordFailure } from './auth/rate-limit';
+import type { Deps } from '#lib/server/deps.js';
+import { secretsMatch } from '#lib/server/auth/crypto.js';
+import { clearFailures, isRateLimited, recordFailure } from '#lib/server/auth/rate-limit.js';
 import {
 	clearedSessionCookie,
 	createSession,
@@ -8,7 +8,7 @@ import {
 	isValidSession,
 	readSessionCookie,
 	sessionCookie
-} from './auth/session';
+} from '#lib/server/auth/session.js';
 
 const PUBLIC_PATHS = new Set(['/login']);
 

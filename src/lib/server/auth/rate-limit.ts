@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
-import type { Db } from '../db';
-import { loginFailures } from '../db/schema';
+import type { Db } from '#lib/server/db/index.js';
+import { loginFailures } from '#lib/server/db/schema.js';
 
 export const MAX_FAILURES = 5;
 export const WINDOW_MS = 15 * 60 * 1000;
