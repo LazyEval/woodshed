@@ -1,0 +1,2 @@
+APP_PASSWORD=change-me
+SESSION_KEY=generate-with-openssl-rand-base64-32

@@ -1,0 +1,14 @@
+{
+	"extends": "$app/tsconfig",
+	"compilerOptions": {
+		"strict": true
+	},
+	"include": [
+		"worker-configuration.d.ts",
+		"src",
+		"tests",
+		"vite.config.ts",
+		"vitest.config.ts",
+		"drizzle.config.ts"
+	]
+}

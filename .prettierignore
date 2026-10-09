@@ -1,0 +1,6 @@
+.svelte-kit/
+node_modules/
+drizzle/
+package-lock.json
+static/
+worker-configuration.d.ts
