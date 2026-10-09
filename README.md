@@ -8,7 +8,7 @@ Personal practice tool for jazz standards.
 
 ## Docs
 
-- [CONTEXT.md](./CONTEXT.md): domain glossary
+- [CONTEXT.md](./docs/CONTEXT.md): domain glossary
 - [docs/adr/](./docs/adr/): architecture decision records
 
 ## Stack
