@@ -57,10 +57,10 @@ describe('login', () => {
 		for (let i = 0; i < 5; i++) await login(loginRequest('wrong', 'no-ip'), deps);
 
 		const withIp = await login(loginRequest(APP_PASSWORD, '203.0.113.9'), deps);
-		const literalNoIp = await login(loginRequest(APP_PASSWORD, null), deps);
+		const withoutIp = await login(loginRequest(APP_PASSWORD, null), deps);
 
 		expect(withIp.headers.get('location')).toBe('/');
-		expect(literalNoIp.headers.get('location')).toBe('/login?error=rate-limited');
+		expect(withoutIp.headers.get('location')).toBe('/login?error=rate-limited');
 	});
 
 	it('rate limits per client', async () => {

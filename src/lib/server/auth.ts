@@ -18,13 +18,13 @@ function redirect(location: string, setCookie?: string): Response {
 	return new Response(null, { status: 303, headers });
 }
 
-function clientId(request: Request): string {
+function rateLimitKey(request: Request): string {
 	const ip = request.headers.get('cf-connecting-ip');
 	return ip ? `ip:${ip}` : 'no-ip';
 }
 
 export async function login(request: Request, deps: Deps): Promise<Response> {
-	const client = clientId(request);
+	const client = rateLimitKey(request);
 	const now = deps.clock.now();
 
 	if (await isRateLimited(deps.db, client, now)) {
