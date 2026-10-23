@@ -10,7 +10,7 @@ import {
 	sessionCookie
 } from '#lib/server/auth/session.js';
 
-const PUBLIC_PATHS = new Set(['/login']);
+const PUBLIC_PATHS = new Set(['/login', '/login/submit']);
 
 function redirect(location: string, setCookie?: string): Response {
 	const headers = new Headers({ location });

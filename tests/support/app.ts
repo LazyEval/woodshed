@@ -18,7 +18,7 @@ export function createTestApp(overrides: Partial<Deps> = {}): TestApp {
 export const APP_PASSWORD = env.APP_PASSWORD;
 
 export function loginRequest(password: string, ip = '203.0.113.7'): Request {
-	return new Request('https://woodshed.test/login', {
+	return new Request('https://woodshed.test/login/submit', {
 		method: 'POST',
 		headers: {
 			'content-type': 'application/x-www-form-urlencoded',

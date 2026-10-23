@@ -42,7 +42,7 @@ Tests exercise the server request handlers (`Request` to `Response`) against loc
 
 ## Auth
 
-Single shared password. `POST /login` compares it in constant time against the `APP_PASSWORD` secret, then sets a signed (`SESSION_KEY`), HttpOnly, Secure, SameSite=Lax cookie valid 180 days. Sessions are stored in D1 so logout revokes them. Five failed logins per client IP in 15 minutes locks that IP out for the rest of the window. Every route except `/login` requires a session; unauthenticated GETs redirect to `/login`, other methods get 401.
+Single shared password. `POST /login/submit` compares it in constant time against the `APP_PASSWORD` secret, then sets a signed (`SESSION_KEY`), HttpOnly, Secure, SameSite=Lax cookie valid 180 days. Sessions are stored in D1 so logout revokes them. Five failed logins per client IP in 15 minutes locks that IP out for the rest of the window. Every route except `/login` and `/login/submit` requires a session; unauthenticated GETs redirect to `/login`, other methods get 401.
 
 ## Deploy
 

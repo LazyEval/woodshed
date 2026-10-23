@@ -94,7 +94,9 @@ describe('guard', () => {
 		const { deps } = createTestApp();
 
 		expect(await guard(requestWithCookie('/login', null), deps)).toBeNull();
-		expect(await guard(requestWithCookie('/login', null, { method: 'POST' }), deps)).toBeNull();
+		expect(
+			await guard(requestWithCookie('/login/submit', null, { method: 'POST' }), deps)
+		).toBeNull();
 	});
 
 	it('lets a logged-in request through', async () => {
