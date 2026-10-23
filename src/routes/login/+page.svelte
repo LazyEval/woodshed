@@ -13,7 +13,7 @@
 
 <main>
 	<h1>Woodshed</h1>
-	<form method="POST">
+	<form method="POST" action="/login/submit">
 		<label>
 			Password
 			<input type="password" name="password" autocomplete="current-password" required />
