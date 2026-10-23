@@ -12,7 +12,7 @@
 		{
 			"binding": "DB",
 			"database_name": "woodshed",
-			"database_id": "00000000-0000-0000-0000-000000000000",
+			"database_id": "d4c139e9-c7f3-4760-8b2f-c55295e13abf",
 			"migrations_dir": "drizzle"
 		}
 	],
