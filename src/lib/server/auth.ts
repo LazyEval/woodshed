@@ -19,7 +19,8 @@ function redirect(location: string, setCookie?: string): Response {
 }
 
 function clientId(request: Request): string {
-	return request.headers.get('cf-connecting-ip') ?? 'unknown';
+	const ip = request.headers.get('cf-connecting-ip');
+	return ip ? `ip:${ip}` : 'no-ip';
 }
 
 export async function login(request: Request, deps: Deps): Promise<Response> {

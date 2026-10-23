@@ -13,6 +13,7 @@ Personal practice tool for jazz standards. SvelteKit on Cloudflare Workers, D1 (
 ## Testing
 
 - Test at the server-API seam only: call the server request handlers (`Request` in, `Response` out) inside the Workers runtime (`@cloudflare/vitest-plugin`) against local D1/R2. No tests of internals, no mocking of internal collaborators.
+- Routing is the exception: `tests/routing.test.ts` sends browser-style requests (`SELF.fetch`) to the built worker (`npm test` runs `vite build` first) so hooks and SvelteKit routes are covered. Keep it to a few requests proving wiring; behavior is tested at the handler seam.
 - Time goes through the injectable `Clock`; the AI goes through the injectable `AiClient` port. Tests use `tests/support/fake-clock.ts` and `tests/support/fake-ai.ts` via `createTestApp()`.
 - Real D1 and R2 are used in tests; migrations in `drizzle/` are applied automatically.
 

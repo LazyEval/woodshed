@@ -51,6 +51,18 @@ describe('login', () => {
 		expect(response.headers.get('set-cookie')).toBeNull();
 	});
 
+	it('does not let failures without a client IP lock out a client that has one', async () => {
+		const { deps } = createTestApp();
+		for (let i = 0; i < 5; i++) await login(loginRequest('wrong', null), deps);
+		for (let i = 0; i < 5; i++) await login(loginRequest('wrong', 'no-ip'), deps);
+
+		const withIp = await login(loginRequest(APP_PASSWORD, '203.0.113.9'), deps);
+		const literalNoIp = await login(loginRequest(APP_PASSWORD, null), deps);
+
+		expect(withIp.headers.get('location')).toBe('/');
+		expect(literalNoIp.headers.get('location')).toBe('/login?error=rate-limited');
+	});
+
 	it('rate limits per client', async () => {
 		const { deps } = createTestApp();
 		for (let i = 0; i < 5; i++) await login(loginRequest('wrong', '198.51.100.1'), deps);
