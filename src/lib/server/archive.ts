@@ -11,12 +11,13 @@ import { CONFIRM_REPLACE } from '#lib/tune.js';
 import type { Deps } from '#lib/server/deps.js';
 import { practiceSessions, rules, simplifiedCharts, tunes } from '#lib/server/db/schema.js';
 import { jsonError } from '#lib/server/http.js';
-import { IMAGE_TYPES, MAX_SCAN_PAGES, scanKey } from '#lib/server/scans.js';
+import { IMAGE_TYPES, MAX_PAGE_BYTES, MAX_SCAN_PAGES, scanKey } from '#lib/server/scans.js';
 import { readZip, writeZip } from '#lib/server/zip.js';
 
 const FORMAT = 'woodshed-archive';
 const VERSION = 1;
 const MANIFEST_NAME = 'manifest.json';
+const SAFE_ID = /^[\w-]{1,100}$/;
 const D1_MAX_BOUND_PARAMETERS = 100;
 const R2_MAX_DELETE_KEYS = 1000;
 
@@ -136,6 +137,9 @@ function records(value: unknown, where: string): Record<string, unknown>[] {
 }
 
 function uniqueIds(items: { id: string }[], where: string): Set<string> {
+	if (!items.every((item) => SAFE_ID.test(item.id))) {
+		throw new InvalidArchive(`${where} have invalid ids.`);
+	}
 	const ids = new Set(items.map((item) => item.id));
 	if (ids.size !== items.length) throw new InvalidArchive(`${where} have duplicate ids.`);
 	return ids;
@@ -307,6 +311,7 @@ function parseArchive(bytes: Uint8Array): Archive {
 			const name = archiveScanName(tune.id, page);
 			const data = unzipped.value.get(name);
 			if (!data) throw new InvalidArchive(`Archive is missing ${name}.`);
+			if (data.length > MAX_PAGE_BYTES) throw new InvalidArchive(`${name} is too large.`);
 			scans.set(name, data);
 		}
 	}

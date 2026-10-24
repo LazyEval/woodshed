@@ -316,6 +316,24 @@ describe('import', () => {
 			expect(await snapshot()).toEqual(before);
 		});
 
+		it('a Tune id that is not a safe storage key', async () => {
+			const app = createTestApp();
+			await populate(app);
+			const { manifest, files } = await exported(app);
+			const tunes = structuredClone(manifest.tunes) as { id: string }[];
+			tunes[0].id = '../escape';
+			const before = await snapshot();
+
+			const response = await importArchive(
+				putArchive(archiveWith({ ...manifest, tunes, simplifiedCharts: [], practiceSessions: [] })),
+				app.deps
+			);
+
+			expect(files.size).toBeGreaterThan(1);
+			expect(response.status).toBe(422);
+			expect(await snapshot()).toEqual(before);
+		});
+
 		it('a Practice Session of an unknown Tune', async () => {
 			const session = {
 				id: 's',
