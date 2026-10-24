@@ -1,6 +1,7 @@
 import type {
 	Chart,
 	GenerationRecord,
+	RuleSnapshot,
 	SimplifiedChartOrigin,
 	SourceChartStatus
 } from '#lib/chart.js';
@@ -38,8 +39,6 @@ export const isArchived = (chart: Pick<SimplifiedChartView, 'archivedAt'>) =>
 
 export const CONFIRM_ARCHIVE = { name: 'confirmArchive', value: 'true' } as const;
 
-export interface RuleView {
+export interface RuleView extends RuleSnapshot {
 	id: string;
-	name: string;
-	text: string;
 }

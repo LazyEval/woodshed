@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
 	import { ApiAction } from '#lib/api-action.svelte.js';
+	import GenerateForm from '#lib/components/GenerateForm.svelte';
 	import type { RuleView, TuneDetail } from '#lib/tune.js';
 
 	interface Props {
@@ -15,31 +15,27 @@
 	let creating = $state(false);
 	let generating = $state(false);
 	let name = $state('');
-	let chosenRuleIds = $state<string[]>([]);
-	let note = $state('');
+	let knownIds = new Set<string>();
 	const action = new ApiAction();
 
-	async function generate(event: SubmitEvent) {
-		event.preventDefault();
-		const before = new Set(tune.simplifiedCharts.map((chart) => chart.id));
-		const generated = await action.run(`/api/tunes/${tune.id}/generate`, 'POST', {
-			name,
-			ruleIds: chosenRuleIds,
-			note
-		});
-		if (!generated) return;
-		selectedId = tune.simplifiedCharts.find((chart) => !before.has(chart.id))?.id ?? null;
-		generating = false;
-		name = '';
-		note = '';
-		chosenRuleIds = [];
+	function startGenerating() {
+		rememberCharts();
+		generating = true;
+	}
+
+	function rememberCharts() {
+		knownIds = new Set(tune.simplifiedCharts.map((chart) => chart.id));
+	}
+
+	function selectNewChart() {
+		selectedId = tune.simplifiedCharts.find((chart) => !knownIds.has(chart.id))?.id ?? null;
 	}
 
 	async function create(event: SubmitEvent) {
 		event.preventDefault();
-		const before = new Set(tune.simplifiedCharts.map((chart) => chart.id));
+		rememberCharts();
 		if (!(await action.run(`/api/tunes/${tune.id}/simplified-charts`, 'POST', { name }))) return;
-		selectedId = tune.simplifiedCharts.find((chart) => !before.has(chart.id))?.id ?? null;
+		selectNewChart();
 		creating = false;
 		name = '';
 	}
@@ -66,7 +62,7 @@
 		<button type="button" disabled={locked} onclick={() => (creating = true)}>
 			+ Simplified Chart
 		</button>
-		<button type="button" disabled={locked} onclick={() => (generating = true)}>Generate</button>
+		<button type="button" disabled={locked} onclick={startGenerating}>Generate</button>
 	{/if}
 </div>
 
@@ -78,26 +74,15 @@
 	</form>
 {/if}
 {#if generating}
-	<form class="generate" onsubmit={generate}>
-		<label>Name <input bind:value={name} maxlength="100" placeholder="Generated" /></label>
-		<fieldset>
-			<legend>Rules</legend>
-			{#each rules as rule (rule.id)}
-				<label title={rule.text}>
-					<input type="checkbox" value={rule.id} bind:group={chosenRuleIds} />
-					{rule.name}
-				</label>
-			{:else}
-				<p>No Rules yet. <a href={resolve('/rules')}>Write some</a>.</p>
-			{/each}
-		</fieldset>
-		<label>Note <textarea bind:value={note} maxlength="1000" rows="2"></textarea></label>
-		<button type="submit" disabled={action.busy}>Generate</button>
-		<button type="button" disabled={action.busy} onclick={() => (generating = false)}>
-			Cancel
-		</button>
-		{#if action.busy}<p role="status">Generating…</p>{/if}
-	</form>
+	<GenerateForm
+		tuneId={tune.id}
+		{rules}
+		ondone={() => {
+			generating = false;
+			selectNewChart();
+		}}
+		oncancel={() => (generating = false)}
+	/>
 {/if}
 {#if action.error}<p role="alert">{action.error}</p>{/if}
 
@@ -115,10 +100,5 @@
 	[aria-selected='true'] {
 		font-weight: 700;
 		text-decoration: underline;
-	}
-	.generate {
-		display: grid;
-		gap: 0.5rem;
-		margin-bottom: 0.5rem;
 	}
 </style>

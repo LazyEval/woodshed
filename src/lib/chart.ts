@@ -61,7 +61,7 @@ export interface RuleSnapshot {
 }
 
 export interface BarReason {
-	bar: number;
+	barIndex: number;
 	reason: string;
 }
 

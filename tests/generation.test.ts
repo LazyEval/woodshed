@@ -103,7 +103,7 @@ describe('generation', () => {
 			generation: {
 				rules: [{ name: 'Collapse II V', text: 'II V becomes V' }],
 				note: 'keep the turnaround',
-				reasons: [{ bar: 0, reason: 'Shared II V' }]
+				reasons: [{ barIndex: 0, reason: 'Shared II V' }]
 			}
 		});
 		expect(chart.chart.sections[0].bars[0].chords).toEqual([{ beat: 1, symbol: 'G7' }]);

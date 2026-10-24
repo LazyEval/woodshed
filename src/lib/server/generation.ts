@@ -1,4 +1,4 @@
-import { eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import {
 	countBars,
 	differingBars,
@@ -11,14 +11,15 @@ import {
 } from '#lib/chart.js';
 import type { Result } from '#lib/result.js';
 import type { Deps } from '#lib/server/deps.js';
-import { rules, simplifiedCharts, tunes } from '#lib/server/db/schema.js';
+import { simplifiedCharts, tunes } from '#lib/server/db/schema.js';
 import { jsonError, readBody, tuneNotFound } from '#lib/server/http.js';
+import { snapshotRules } from '#lib/server/rules.js';
+import { parseName } from '#lib/server/validation.js';
 
 const GENERATION_ATTEMPTS = 2;
 const MAX_NOTE_LENGTH = 1000;
 const MAX_REASON_LENGTH = 300;
 const DEFAULT_NAME = 'Generated';
-const MAX_NAME_LENGTH = 100;
 
 interface Generated {
 	chart: Chart;
@@ -45,11 +46,14 @@ function readReasons(raw: unknown, barCount: number): Result<BarReason[]> {
 		reasons.set(bar - 1, item.reason.trim().slice(0, MAX_REASON_LENGTH));
 	}
 	return {
-		value: [...reasons].sort(([a], [b]) => a - b).map(([bar, reason]) => ({ bar, reason }))
+		value: [...reasons]
+			.sort(([a], [b]) => a - b)
+			.map(([barIndex, reason]) => ({ barIndex, reason }))
 	};
 }
 
 function readGenerated(raw: unknown, source: Chart): Result<Generated> {
+	if (typeof raw === 'string') return { error: raw };
 	if (!isRecord(raw)) return { error: 'Output must be an object.' };
 	const validated = validateChart(isRecord(raw.chart) ? { sections: raw.chart.sections } : null);
 	if ('error' in validated) return validated;
@@ -64,50 +68,32 @@ function readGenerated(raw: unknown, source: Chart): Result<Generated> {
 		...(source.keyCenters && { keyCenters: source.keyCenters })
 	};
 	return {
-		value: { chart, reasons: reasons.value.filter(({ bar }) => changed.has(bar)) }
+		value: { chart, reasons: reasons.value.filter(({ barIndex }) => changed.has(barIndex)) }
 	};
 }
 
-async function parseRequest(
-	request: Request,
-	deps: Deps
-): Promise<Result<GenerationInput> | { failure: Response }> {
+async function parseRequest(request: Request, deps: Deps): Promise<Result<GenerationInput>> {
 	const body = await readBody(request);
-	if ('error' in body) return { failure: jsonError(body.error, 400) };
+	if ('error' in body) return body;
 
 	const note = typeof body.value.note === 'string' ? body.value.note.trim() : '';
-	if (note.length > MAX_NOTE_LENGTH) return { failure: jsonError('Note is too long.', 400) };
+	if (note.length > MAX_NOTE_LENGTH) return { error: 'Note is too long.' };
 
 	const ruleIds = body.value.ruleIds ?? [];
 	if (!Array.isArray(ruleIds) || ruleIds.some((id) => typeof id !== 'string')) {
-		return { failure: jsonError('ruleIds must be a list of Rule ids.', 400) };
+		return { error: 'ruleIds must be a list of Rule ids.' };
 	}
 	const uniqueIds = [...new Set(ruleIds as string[])];
-	if (uniqueIds.length === 0 && !note) {
-		return { failure: jsonError('Pick at least one Rule or add a note.', 400) };
-	}
+	if (uniqueIds.length === 0 && !note) return { error: 'Pick at least one Rule or add a note.' };
 
-	const found = uniqueIds.length
-		? await deps.db.select().from(rules).where(inArray(rules.id, uniqueIds))
-		: [];
-	if (found.length !== uniqueIds.length) {
-		return { failure: jsonError('One or more Rules no longer exist.', 400) };
-	}
-	const byId = new Map(found.map((rule) => [rule.id, rule]));
+	const snapshot = await snapshotRules(deps, uniqueIds);
+	if ('error' in snapshot) return snapshot;
 
-	const name = typeof body.value.name === 'string' ? body.value.name.trim() : '';
-	if (name.length > MAX_NAME_LENGTH) return { failure: jsonError('Name is too long.', 400) };
+	const hasName = typeof body.value.name === 'string' && body.value.name.trim() !== '';
+	const name = hasName ? parseName(body.value.name) : { value: DEFAULT_NAME };
+	if ('error' in name) return name;
 
-	return {
-		value: {
-			rules: uniqueIds.map((id) => {
-				const { name, text } = byId.get(id)!;
-				return { name, text };
-			}),
-			note: note || null,
-			name: name || DEFAULT_NAME
-		}
-	};
+	return { value: { rules: snapshot.value, note: note || null, name: name.value } };
 }
 
 export async function generateSimplifiedChart(
@@ -116,7 +102,6 @@ export async function generateSimplifiedChart(
 	tuneId: string
 ): Promise<Response> {
 	const parsed = await parseRequest(request, deps);
-	if ('failure' in parsed) return parsed.failure;
 	if ('error' in parsed) return jsonError(parsed.error, 400);
 	const { rules: snapshot, note, name } = parsed.value;
 

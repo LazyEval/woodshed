@@ -1,21 +1,13 @@
 import { and, eq } from 'drizzle-orm';
 import { isRecord, sameBarGrid, validateChart } from '#lib/chart.js';
 import { isArchived } from '#lib/tune.js';
-import type { Result } from '#lib/result.js';
 import type { Deps } from '#lib/server/deps.js';
 import { simplifiedCharts, tunes } from '#lib/server/db/schema.js';
 import { jsonError, readBody, tuneNotFound } from '#lib/server/http.js';
-
-const MAX_NAME_LENGTH = 100;
+import { parseName } from '#lib/server/validation.js';
 
 const chartNotFound = () => jsonError('Simplified Chart not found.', 404);
 const archivedReadOnly = () => jsonError('Archived Simplified Charts are read-only.', 409);
-
-function parseName(value: unknown): Result<string> {
-	if (typeof value !== 'string' || !value.trim()) return { error: 'Name is required.' };
-	if (value.trim().length > MAX_NAME_LENGTH) return { error: 'Name is too long.' };
-	return { value: value.trim() };
-}
 
 export function listSimplifiedCharts(deps: Deps, tuneId: string) {
 	return deps.db

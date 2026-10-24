@@ -9,6 +9,7 @@ import type {
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const API_VERSION = '2023-06-01';
 const MAX_OUTPUT_TOKENS = 16000;
+const REQUEST_TIMEOUT_MS = 120_000;
 
 const MODEL_IDS: Record<ExtractionModel, string> = {
 	sonnet: 'claude-sonnet-5-5',
@@ -45,6 +46,16 @@ const barSchema = {
 	additionalProperties: false
 };
 
+const sectionsSchema = {
+	type: 'array',
+	items: {
+		type: 'object',
+		properties: { label: { type: 'string' }, bars: { type: 'array', items: barSchema } },
+		required: ['label', 'bars'],
+		additionalProperties: false
+	}
+};
+
 const EXTRACTION_SCHEMA = {
 	type: 'object',
 	properties: {
@@ -54,18 +65,7 @@ const EXTRACTION_SCHEMA = {
 		chart: {
 			type: 'object',
 			properties: {
-				sections: {
-					type: 'array',
-					items: {
-						type: 'object',
-						properties: {
-							label: { type: 'string' },
-							bars: { type: 'array', items: barSchema }
-						},
-						required: ['label', 'bars'],
-						additionalProperties: false
-					}
-				},
+				sections: sectionsSchema,
 				keyCenters: {
 					type: 'array',
 					items: {
@@ -95,18 +95,7 @@ const GENERATION_SCHEMA = {
 		chart: {
 			type: 'object',
 			properties: {
-				sections: {
-					type: 'array',
-					items: {
-						type: 'object',
-						properties: {
-							label: { type: 'string' },
-							bars: { type: 'array', items: barSchema }
-						},
-						required: ['label', 'bars'],
-						additionalProperties: false
-					}
-				}
+				sections: sectionsSchema
 			},
 			required: ['sections'],
 			additionalProperties: false
@@ -183,6 +172,7 @@ async function sendMessage(
 			'x-api-key': apiKey,
 			'anthropic-version': API_VERSION
 		},
+		signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 		body: JSON.stringify({
 			model: payload.model,
 			max_tokens: MAX_OUTPUT_TOKENS,
@@ -203,6 +193,12 @@ async function sendMessage(
 	}
 }
 
+function withPreviousProblem(prompt: string, previousProblem: string | undefined) {
+	return previousProblem
+		? `${prompt}\n\nYour previous attempt was rejected: ${previousProblem}\nTry again and fix this.`
+		: prompt;
+}
+
 function generationInstruction({ source, rules, note, previousProblem }: GenerationRequest) {
 	const sections = [
 		GENERATION_PROMPT,
@@ -210,20 +206,15 @@ function generationInstruction({ source, rules, note, previousProblem }: Generat
 		rules.length
 			? `Rules:\n${rules.map((rule, i) => `${i + 1}. ${rule.name}: ${rule.text}`).join('\n')}`
 			: 'Rules: none selected; follow the note.',
-		note ? `Note for this chart: ${note}` : null,
-		previousProblem
-			? `Your previous attempt was rejected: ${previousProblem}\nGenerate again and fix this.`
-			: null
+		note ? `Note for this chart: ${note}` : null
 	];
-	return sections.filter(Boolean).join('\n\n');
+	return withPreviousProblem(sections.filter(Boolean).join('\n\n'), previousProblem);
 }
 
 export function createAnthropicAiClient(apiKey: string, fetcher: typeof fetch = fetch): AiClient {
 	return {
 		extract({ images, model, previousProblem }: ExtractionRequest) {
-			const instruction = previousProblem
-				? `${EXTRACTION_PROMPT}\n\nYour previous attempt was rejected: ${previousProblem}\nTranscribe again and fix this.`
-				: EXTRACTION_PROMPT;
+			const instruction = withPreviousProblem(EXTRACTION_PROMPT, previousProblem);
 			return sendMessage(apiKey, fetcher, {
 				model: MODEL_IDS[model],
 				schema: EXTRACTION_SCHEMA,

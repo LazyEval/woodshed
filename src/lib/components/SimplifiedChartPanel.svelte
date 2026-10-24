@@ -105,7 +105,7 @@
 	{/if}
 	<ChartGrid
 		chart={simplified.chart}
-		reasons={simplified.generation?.reasons.filter(({ bar }) => differing.includes(bar))}
+		reasons={simplified.generation?.reasons.filter(({ barIndex }) => differing.includes(barIndex))}
 		highlightedBars={differing}
 		flaggedBars={simplified.flaggedBars}
 		onclearflag={clearFlag}
