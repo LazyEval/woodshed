@@ -3,6 +3,7 @@
 		BEAT_UNITS,
 		DEFAULT_TIME_SIGNATURE,
 		ENDING_NUMBERS,
+		KEY_MODES,
 		MAX_BEATS_PER_BAR,
 		barToSlots,
 		effectiveTimeSignatures,
@@ -12,6 +13,7 @@
 		type Bar,
 		type Chart,
 		type EndingNumber,
+		type KeyMode,
 		type TimeSignature
 	} from '#lib/chart.js';
 
@@ -36,6 +38,13 @@
 	interface EditableSection {
 		label: string;
 		bars: EditableBar[];
+	}
+
+	interface EditableKeyCenter {
+		startBar: number | null;
+		endBar: number | null;
+		tonic: string;
+		mode: KeyMode;
 	}
 
 	function toEditableBar(bar: Bar): EditableBar {
@@ -69,6 +78,20 @@
 		}))
 	);
 
+	// svelte-ignore state_referenced_locally
+	let keyCenters = $state<EditableKeyCenter[]>(
+		(chart.keyCenters ?? []).map((keyCenter) => ({ ...keyCenter }))
+	);
+
+	function addKeyCenter() {
+		const last = keyCenters.at(-1)?.endBar ?? 0;
+		const start = Math.min(
+			last + 1,
+			sections.reduce((n, section) => n + section.bars.length, 0)
+		);
+		keyCenters.push({ startBar: start, endBar: start, tonic: 'C', mode: 'major' });
+	}
+
 	function enteredSignature(bar: EditableBar): TimeSignature | undefined {
 		if (bar.beats === null) return undefined;
 		const signature = { beats: bar.beats, unit: bar.unit };
@@ -90,7 +113,8 @@
 		sections: sections.map((section, s) => ({
 			label: section.label,
 			bars: section.bars.map((bar, b) => toBar(bar, signatures[s][b].beats))
-		}))
+		})),
+		...(keyCenters.length && { keyCenters: $state.snapshot(keyCenters) as Chart['keyCenters'] })
 	});
 
 	const problem = $derived.by(() => {
@@ -235,6 +259,52 @@
 		Add section
 	</button>
 
+	<fieldset>
+		<legend>Key centers</legend>
+		<p class="hint">Bar numbers count from the first bar of the chart.</p>
+		{#each keyCenters as keyCenter, k (k)}
+			<div class="key-center">
+				<label>
+					From bar
+					<input
+						type="number"
+						min="1"
+						bind:value={keyCenter.startBar}
+						aria-label="Key center {k + 1} start bar"
+					/>
+				</label>
+				<label>
+					to bar
+					<input
+						type="number"
+						min="1"
+						bind:value={keyCenter.endBar}
+						aria-label="Key center {k + 1} end bar"
+					/>
+				</label>
+				<input
+					bind:value={keyCenter.tonic}
+					class="tonic"
+					aria-label="Key center {k + 1} tonic"
+					placeholder="C, Bb, F#"
+					autocomplete="off"
+					spellcheck="false"
+				/>
+				<select bind:value={keyCenter.mode} aria-label="Key center {k + 1} mode">
+					{#each KEY_MODES as mode (mode)}
+						<option value={mode}>{mode}</option>
+					{/each}
+				</select>
+				<button
+					type="button"
+					aria-label="Remove key center {k + 1}"
+					onclick={() => keyCenters.splice(k, 1)}>×</button
+				>
+			</div>
+		{/each}
+		<button type="button" onclick={addKeyCenter}>Add key center</button>
+	</fieldset>
+
 	{#if problem}<p role="alert">{problem}</p>{/if}
 	{#if error}<p role="alert">{error}</p>{/if}
 	<button type="submit" disabled={saving || problem !== null}>
@@ -280,6 +350,23 @@
 		flex-wrap: wrap;
 		gap: 0.25rem;
 		align-items: center;
+		font-size: 0.875rem;
+	}
+	.key-center {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		align-items: end;
+		margin-bottom: 0.5rem;
+	}
+	.key-center input[type='number'] {
+		width: 4rem;
+	}
+	.tonic {
+		width: 5rem;
+	}
+	.hint {
+		margin: 0 0 0.5rem;
 		font-size: 0.875rem;
 	}
 	.beats {

@@ -534,3 +534,111 @@ describe('source chart structure', () => {
 		expect(await storedChart(app, tune.id)).toEqual(reordered);
 	});
 });
+
+describe('key centers', () => {
+	const bars = (count: number) => Array.from({ length: count }, () => ({ chords: [] }));
+
+	async function save(app: ReturnType<typeof createTestApp>, id: string, chart: unknown) {
+		return saveSourceChart(jsonRequest(`/api/tunes/${id}/chart`, 'PUT', { chart }), app.deps, id);
+	}
+
+	async function storedChart(app: ReturnType<typeof createTestApp>, id: string) {
+		const stored = (await getTune(app.deps, id).then((r) => r.json())) as TuneJson;
+		return stored.sourceChart;
+	}
+
+	const chartWith = (keyCenters: unknown) => ({
+		sections: [
+			{ label: 'A', bars: bars(4) },
+			{ label: 'B', bars: bars(4) }
+		],
+		keyCenters
+	});
+
+	it('round-trips key centers, spanning sections, with gaps allowed', async () => {
+		const { app, tune } = await newTune();
+		const chart = chartWith([
+			{ startBar: 1, endBar: 3, tonic: 'C', mode: 'major' },
+			{ startBar: 6, endBar: 8, tonic: 'F#', mode: 'minor' }
+		]);
+
+		const response = await save(app, tune.id, chart);
+
+		expect(response.status).toBe(200);
+		expect(await storedChart(app, tune.id)).toEqual(chart);
+	});
+
+	it('sorts key centers by start bar', async () => {
+		const { app, tune } = await newTune();
+
+		await save(
+			app,
+			tune.id,
+			chartWith([
+				{ startBar: 5, endBar: 8, tonic: 'Bb', mode: 'major' },
+				{ startBar: 1, endBar: 4, tonic: 'G', mode: 'minor' }
+			])
+		);
+
+		const stored = await storedChart(app, tune.id);
+		expect(stored.keyCenters?.map((k) => k.tonic)).toEqual(['G', 'Bb']);
+	});
+
+	it('accepts a chart without key centers and omits an empty list', async () => {
+		const { app, tune } = await newTune();
+
+		expect((await save(app, tune.id, chartWith([]))).status).toBe(200);
+
+		expect((await storedChart(app, tune.id)).keyCenters).toBeUndefined();
+	});
+
+	it.each([
+		[
+			'overlapping spans',
+			[
+				{ startBar: 1, endBar: 4, tonic: 'C', mode: 'major' },
+				{ startBar: 4, endBar: 6, tonic: 'G', mode: 'major' }
+			]
+		],
+		['a span past the last bar', [{ startBar: 5, endBar: 9, tonic: 'C', mode: 'major' }]],
+		['a span starting before bar 1', [{ startBar: 0, endBar: 2, tonic: 'C', mode: 'major' }]],
+		['an end before the start', [{ startBar: 4, endBar: 2, tonic: 'C', mode: 'major' }]],
+		['a fractional bar', [{ startBar: 1.5, endBar: 2, tonic: 'C', mode: 'major' }]],
+		['an invalid tonic', [{ startBar: 1, endBar: 2, tonic: 'H', mode: 'major' }]],
+		['a minor-suffixed tonic', [{ startBar: 1, endBar: 2, tonic: 'Am', mode: 'minor' }]],
+		['an unknown mode', [{ startBar: 1, endBar: 2, tonic: 'C', mode: 'dorian' }]],
+		['a non-list', { startBar: 1, endBar: 2, tonic: 'C', mode: 'major' }]
+	])('rejects %s and leaves the stored chart untouched', async (_name, keyCenters) => {
+		const { app, tune } = await newTune();
+		await save(app, tune.id, validChart);
+
+		const response = await save(app, tune.id, chartWith(keyCenters));
+
+		expect(response.status).toBe(400);
+		expect(((await response.json()) as TuneJson).error).toBeTruthy();
+		expect(await storedChart(app, tune.id)).toEqual(validChart);
+	});
+
+	it('rejects removing bars that leave a key center out of range', async () => {
+		const { app, tune } = await newTune();
+		const full = chartWith([{ startBar: 5, endBar: 8, tonic: 'C', mode: 'major' }]);
+		await save(app, tune.id, full);
+
+		const shorter = { ...full, sections: [{ label: 'A', bars: bars(4) }] };
+
+		expect((await save(app, tune.id, shorter)).status).toBe(400);
+		expect(await storedChart(app, tune.id)).toEqual(full);
+	});
+
+	it('cannot be changed while Verified', async () => {
+		const { app, tune } = await newTune();
+		const chart = chartWith([{ startBar: 1, endBar: 4, tonic: 'C', mode: 'major' }]);
+		await save(app, tune.id, chart);
+		await markChartVerified(app.deps, tune.id);
+
+		const response = await save(app, tune.id, chartWith([]));
+
+		expect(response.status).toBe(409);
+		expect(await storedChart(app, tune.id)).toEqual(chart);
+	});
+});
