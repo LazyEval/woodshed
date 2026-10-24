@@ -77,11 +77,24 @@ export function emptyChart(): Chart {
 	return { sections: [{ label: 'A', bars: [emptyBar()] }] };
 }
 
+export function isValidTimeSignature(signature: TimeSignature): boolean {
+	return (
+		Number.isInteger(signature.beats) &&
+		signature.beats >= 1 &&
+		signature.beats <= MAX_BEATS_PER_BAR &&
+		BEAT_UNITS.includes(signature.unit)
+	);
+}
+
+function inheritTimeSignature(inherited: TimeSignature, bar: Bar): TimeSignature {
+	return bar.timeSignature ?? inherited;
+}
+
 export function effectiveTimeSignatures(chart: Chart): TimeSignature[] {
 	let current = DEFAULT_TIME_SIGNATURE;
 	return chart.sections.flatMap((section) =>
 		section.bars.map((bar) => {
-			current = bar.timeSignature ?? current;
+			current = inheritTimeSignature(current, bar);
 			return current;
 		})
 	);
@@ -158,7 +171,7 @@ export function validateChart(chart: unknown): Result<Chart> {
 		for (const [b, rawBar] of rawSection.bars.entries()) {
 			const bar = validateBar(rawBar, `${sectionLocation} (${label}), bar ${b + 1}`, timeSignature);
 			if ('error' in bar) return bar;
-			timeSignature = bar.value.timeSignature ?? timeSignature;
+			timeSignature = inheritTimeSignature(timeSignature, bar.value);
 			bars.push(bar.value);
 		}
 		sections.push({ label, bars });
@@ -169,20 +182,18 @@ export function validateChart(chart: unknown): Result<Chart> {
 }
 
 function validateTimeSignature(raw: unknown, location: string): Result<TimeSignature> {
+	const candidate = isRecord(raw) ? { beats: raw.beats, unit: raw.unit } : null;
 	if (
-		!isRecord(raw) ||
-		typeof raw.beats !== 'number' ||
-		!Number.isInteger(raw.beats) ||
-		raw.beats < 1 ||
-		raw.beats > MAX_BEATS_PER_BAR ||
-		typeof raw.unit !== 'number' ||
-		!BEAT_UNITS.includes(raw.unit)
+		!candidate ||
+		typeof candidate.beats !== 'number' ||
+		typeof candidate.unit !== 'number' ||
+		!isValidTimeSignature({ beats: candidate.beats, unit: candidate.unit })
 	) {
 		return {
 			error: `${location}: time signature needs 1 to ${MAX_BEATS_PER_BAR} beats over a unit of ${BEAT_UNITS.join(', ')}.`
 		};
 	}
-	return { value: { beats: raw.beats, unit: raw.unit } };
+	return { value: { beats: candidate.beats, unit: candidate.unit } };
 }
 
 function validateBar(rawBar: unknown, location: string, inherited: TimeSignature): Result<Bar> {

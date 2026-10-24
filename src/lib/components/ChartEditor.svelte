@@ -5,11 +5,14 @@
 		ENDING_NUMBERS,
 		MAX_BEATS_PER_BAR,
 		barToSlots,
+		effectiveTimeSignatures,
+		isValidTimeSignature,
 		slotsToChords,
 		validateChart,
 		type Bar,
 		type Chart,
-		type EndingNumber
+		type EndingNumber,
+		type TimeSignature
 	} from '#lib/chart.js';
 
 	interface Props {
@@ -66,21 +69,21 @@
 		}))
 	);
 
+	function enteredSignature(bar: EditableBar): TimeSignature | undefined {
+		if (bar.beats === null) return undefined;
+		const signature = { beats: bar.beats, unit: bar.unit };
+		return isValidTimeSignature(signature) ? signature : undefined;
+	}
+
 	const signatures = $derived.by(() => {
-		let current = DEFAULT_TIME_SIGNATURE;
-		return sections.map((section) =>
-			section.bars.map((bar) => {
-				if (
-					bar.beats &&
-					Number.isInteger(bar.beats) &&
-					bar.beats >= 1 &&
-					bar.beats <= MAX_BEATS_PER_BAR
-				) {
-					current = { beats: bar.beats, unit: bar.unit };
-				}
-				return current;
-			})
-		);
+		const flat = effectiveTimeSignatures({
+			sections: sections.map((section) => ({
+				label: section.label,
+				bars: section.bars.map((bar) => ({ chords: [], timeSignature: enteredSignature(bar) }))
+			}))
+		});
+		let index = 0;
+		return sections.map((section) => section.bars.map(() => flat[index++]));
 	});
 
 	const draft = $derived<Chart>({
@@ -89,13 +92,20 @@
 			bars: section.bars.map((bar, b) => toBar(bar, signatures[s][b].beats))
 		}))
 	});
+
 	const problem = $derived.by(() => {
-		const invalidSignature = sections.some((section) =>
-			section.bars.some(
-				(bar) => bar.beats !== null && !(bar.beats >= 1 && bar.beats <= MAX_BEATS_PER_BAR)
-			)
-		);
-		if (invalidSignature) return `Beats per bar must be 1 to ${MAX_BEATS_PER_BAR}.`;
+		for (const [s, section] of sections.entries()) {
+			for (const [b, bar] of section.bars.entries()) {
+				const location = `Section ${s + 1} (${section.label}), bar ${b + 1}`;
+				if (bar.beats !== null && !enteredSignature(bar)) {
+					return `${location}: beats per bar must be a whole number from 1 to ${MAX_BEATS_PER_BAR}.`;
+				}
+				const hidden = bar.slots.slice(signatures[s][b].beats).some((slot) => slot.trim());
+				if (hidden) {
+					return `${location}: chords beyond beat ${signatures[s][b].beats} would be lost. Clear them or change the time signature.`;
+				}
+			}
+		}
 		const result = validateChart(draft);
 		return 'error' in result ? result.error : null;
 	});
