@@ -159,7 +159,7 @@
 
 <style>
 	main {
-		max-width: 40rem;
+		max-width: 30rem;
 		margin: 0 auto;
 		padding: 1rem;
 	}
@@ -174,7 +174,7 @@
 	}
 	@media (min-width: 60rem) {
 		main {
-			max-width: 72rem;
+			max-width: 56rem;
 		}
 		.split {
 			display: grid;
