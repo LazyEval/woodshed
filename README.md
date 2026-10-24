@@ -21,7 +21,7 @@ Requires Node 22 (`.nvmrc`).
 
 ```sh
 npm install
-cp .dev.vars.example .dev.vars   # local APP_PASSWORD and SESSION_KEY
+cp .dev.vars.example .dev.vars   # local APP_PASSWORD, SESSION_KEY, ANTHROPIC_API_KEY
 npm run db:migrate:local         # create local D1 tables
 npm run dev
 ```
@@ -46,7 +46,7 @@ Single shared password. `POST /login/submit` compares it in constant time agains
 
 ## Tunes API
 
-JSON, session required. `GET/POST /api/tunes` (`?q=` title search), `GET/PATCH/DELETE /api/tunes/:id`, `PUT /api/tunes/:id/chart` (validated; 409 once Verified), `POST /api/tunes/:id/verify` and `/reopen`. Errors are `{ "error": message }`. The Source Chart is stored as a validated JSON document on the tune (`src/lib/chart.ts`).
+JSON, session required. `GET/POST /api/tunes` (`?q=` title search), `GET/PATCH/DELETE /api/tunes/:id`, `PUT /api/tunes/:id/chart` (validated; 409 once Verified), `POST /api/tunes/:id/verify` and `/reopen`. `POST /api/tunes/import` (multipart: `pages` images in order, optional `model=opus`, or `mode=manual` + `title` to keep the Scan and build the grid by hand) extracts a Draft Source Chart from a Scan with Claude (output validated, retried once) and creates the Tune only on success. `POST /api/tunes/:id/extract` (`{ model }`) re-extracts a Draft from the stored Scan; `GET /api/tunes/:id/scan/:page` serves a page. Errors are `{ "error": message }`. The Source Chart is stored as a validated JSON document on the tune (`src/lib/chart.ts`).
 
 Rotation: `GET/POST /api/tunes/:id/sessions` (`{ rating, practicedOn?, chart? }`, date defaults to today, `chart` is `"source"` or omitted), `DELETE /api/tunes/:id/sessions/:sessionId`, `POST /api/tunes/:id/shelve` and `/unshelve`, `GET /api/due`. `GET /api/tunes/:id` includes `lastPracticedOn`, `lastRating` and `dueOn`. The schedule is replayed from the Practice Sessions on every read (`src/lib/rotation.ts`). Dates are calendar dates in the `TIME_ZONE` var in `wrangler.jsonc` (IANA name, e.g. `Europe/Rome`).
 
@@ -63,5 +63,6 @@ One-time setup:
    - `CLOUDFLARE_ACCOUNT_ID`
    - `APP_PASSWORD`: the login password.
    - `SESSION_KEY`: random signing key, e.g. `openssl rand -base64 32`. Rotating it logs everyone out.
+   - `ANTHROPIC_API_KEY`: Claude API key used for Scan extraction.
 
 Install on a phone via the browser's "Add to Home Screen" (web manifest in `static/`).

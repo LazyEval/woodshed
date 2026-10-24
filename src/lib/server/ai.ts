@@ -16,6 +16,14 @@ export interface ScanImage {
 	mediaType: string;
 }
 
+export type ExtractionModel = 'sonnet' | 'opus';
+
+export interface ExtractionRequest {
+	images: ScanImage[];
+	model: ExtractionModel;
+	previousProblem?: string;
+}
+
 export interface GenerationRequest {
 	source: ChartGrid;
 	rules: string[];
@@ -33,11 +41,11 @@ export interface GenerationResult {
 }
 
 export interface AiClient {
-	extractChart(scan: ScanImage): Promise<ChartGrid>;
+	extract(request: ExtractionRequest): Promise<unknown>;
 	generateSimplifiedChart(request: GenerationRequest): Promise<GenerationResult>;
 }
 
 export const unconfiguredAiClient: AiClient = {
-	extractChart: () => Promise.reject(new Error('AI client not configured')),
+	extract: () => Promise.reject(new Error('AI client not configured')),
 	generateSimplifiedChart: () => Promise.reject(new Error('AI client not configured'))
 };

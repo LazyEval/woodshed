@@ -12,5 +12,6 @@ export interface TuneSummary {
 
 export interface TuneDetail extends TuneSummary, Schedule {
 	sourceChart: Chart;
+	scanPageCount: number;
 	verifiedAt: number | null;
 }

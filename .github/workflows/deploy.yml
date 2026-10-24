@@ -31,7 +31,8 @@ jobs:
         env:
           APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
           SESSION_KEY: ${{ secrets.SESSION_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           secrets_file="$RUNNER_TEMP/secrets.json"
-          jq -n --arg p "$APP_PASSWORD" --arg s "$SESSION_KEY" '{APP_PASSWORD: $p, SESSION_KEY: $s}' > "$secrets_file"
+          jq -n --arg p "$APP_PASSWORD" --arg s "$SESSION_KEY" --arg a "$ANTHROPIC_API_KEY" '{APP_PASSWORD: $p, SESSION_KEY: $s, ANTHROPIC_API_KEY: $a}' > "$secrets_file"
           npx wrangler deploy --secrets-file "$secrets_file"

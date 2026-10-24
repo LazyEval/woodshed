@@ -25,6 +25,7 @@ export const tunes = sqliteTable('tunes', {
 		.default('draft'),
 	verifiedAt: integer('verified_at'),
 	shelved: integer('shelved', { mode: 'boolean' }).notNull().default(false),
+	scanPageCount: integer('scan_page_count').notNull().default(0),
 	createdAt: integer('created_at').notNull(),
 	updatedAt: integer('updated_at').notNull()
 });

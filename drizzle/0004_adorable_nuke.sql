@@ -1,0 +1,1 @@
+ALTER TABLE `tunes` ADD `scan_page_count` integer DEFAULT 0 NOT NULL;

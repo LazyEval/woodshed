@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { sendJson } from '#lib/api.js';
+	import ScanImport from '#lib/components/ScanImport.svelte';
 	import TuneFields from '#lib/components/TuneFields.svelte';
 
 	let { data } = $props();
@@ -62,6 +63,9 @@
 			{/each}
 		</ul>
 	{/if}
+
+	<h2>Import from a Scan</h2>
+	<ScanImport />
 
 	<h2>New tune</h2>
 	<form onsubmit={create}>

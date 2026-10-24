@@ -89,4 +89,32 @@ describe('routing through the built worker', () => {
 		expect(await home.text()).toContain('Rotation Waltz');
 		expect(logged.status).toBe(201);
 	});
+
+	it('routes a multipart Scan import to the import handler', async () => {
+		const login = await SELF.fetch('https://woodshed.test/login/submit', {
+			method: 'POST',
+			headers: browserHeaders,
+			body: new URLSearchParams({ password: APP_PASSWORD }),
+			redirect: 'manual'
+		});
+		const cookie = login.headers.get('set-cookie')!.split(';')[0];
+		const form = new FormData();
+		form.append('pages', new File(['scan'], 'page-1.jpg', { type: 'image/jpeg' }));
+		form.append('mode', 'manual');
+		form.append('title', 'Scanned Blues');
+
+		const imported = await SELF.fetch('https://woodshed.test/api/tunes/import', {
+			method: 'POST',
+			headers: { cookie, origin: 'https://woodshed.test' },
+			body: form
+		});
+		const { id } = (await imported.json()) as { id: string };
+		const scan = await SELF.fetch(`https://woodshed.test/api/tunes/${id}/scan/0`, {
+			headers: { cookie }
+		});
+
+		expect(imported.status).toBe(201);
+		expect(scan.status).toBe(200);
+		expect(scan.headers.get('content-type')).toBe('image/jpeg');
+	});
 });
