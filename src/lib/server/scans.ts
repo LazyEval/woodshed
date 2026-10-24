@@ -9,6 +9,7 @@ export const MAX_PAGE_BYTES = 5 * 1024 * 1024;
 const MAX_TEXT_LENGTH = 200;
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const EXTRACTION_ATTEMPTS = 2;
+const VERIFIED_LOCKED = 'Source Chart is Verified and cannot be edited. Reopen it first.';
 
 interface Extracted {
 	title: string;
@@ -175,7 +176,7 @@ export async function reextractChart(request: Request, deps: Deps, id: string): 
 	const tune = await deps.db.query.tunes.findFirst({ where: eq(tunes.id, id) });
 	if (!tune) return jsonError('Tune not found.', 404);
 	if (tune.sourceChartStatus === 'verified') {
-		return jsonError('Source Chart is Verified and cannot be edited. Reopen it first.', 409);
+		return jsonError(VERIFIED_LOCKED, 409);
 	}
 	if (tune.scanPageCount === 0) return jsonError('Tune has no Scan to extract from.', 409);
 
@@ -187,9 +188,7 @@ export async function reextractChart(request: Request, deps: Deps, id: string): 
 		.set({ sourceChart: extraction.value.chart, updatedAt: deps.clock.now().getTime() })
 		.where(and(eq(tunes.id, id), eq(tunes.sourceChartStatus, 'draft')))
 		.returning();
-	return saved
-		? Response.json(saved)
-		: jsonError('Source Chart is Verified and cannot be edited. Reopen it first.', 409);
+	return saved ? Response.json(saved) : jsonError(VERIFIED_LOCKED, 409);
 }
 
 export async function getScanPage(deps: Deps, id: string, page: string): Promise<Response> {

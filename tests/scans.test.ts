@@ -136,6 +136,16 @@ describe('importing a tune from a scan', () => {
 		expect(app.ai.extractRequests[1].previousProblem).toMatch(/invalid chord symbol/);
 	});
 
+	it('retries once when the output is not even an object', async () => {
+		const app = createTestApp();
+		app.ai.willExtract('Output was not valid JSON.', extracted);
+
+		const response = await importTune(importRequest([page('x')]), app.deps);
+
+		expect(response.status).toBe(201);
+		expect(app.ai.extractRequests).toHaveLength(2);
+	});
+
 	it('retries once on invalid structure then surfaces an error and persists nothing', async () => {
 		const app = createTestApp();
 		const badStructure = {

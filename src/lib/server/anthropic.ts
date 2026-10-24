@@ -147,8 +147,12 @@ export function createAnthropicAiClient(apiKey: string, fetcher: typeof fetch = 
 				throw new Error(`Anthropic API ${response.status}: ${body.error?.message ?? 'error'}`);
 			}
 			const text = body.content?.find((block) => block.type === 'text')?.text;
-			if (!text) throw new Error(`Anthropic API returned no text (${body.stop_reason})`);
-			return JSON.parse(text) as unknown;
+			if (!text) return `Output was empty (stop reason: ${body.stop_reason}).`;
+			try {
+				return JSON.parse(text) as unknown;
+			} catch {
+				return `Output was not valid JSON (stop reason: ${body.stop_reason}).`;
+			}
 		},
 
 		generateSimplifiedChart: () => Promise.reject(new Error('Generation is not implemented yet'))
