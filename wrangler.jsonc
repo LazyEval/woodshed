@@ -5,7 +5,7 @@
 	"compatibility_date": "2026-10-01",
 	"compatibility_flags": ["nodejs_compat"],
 	"vars": {
-		"TIME_ZONE": "UTC"
+		"TIME_ZONE": "Europe/Rome"
 	},
 	"assets": {
 		"binding": "ASSETS",

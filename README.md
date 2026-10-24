@@ -48,7 +48,7 @@ Single shared password. `POST /login/submit` compares it in constant time agains
 
 JSON, session required. `GET/POST /api/tunes` (`?q=` title search), `GET/PATCH/DELETE /api/tunes/:id`, `PUT /api/tunes/:id/chart` (validated; 409 once Verified), `POST /api/tunes/:id/verify` and `/reopen`. Errors are `{ "error": message }`. The Source Chart is stored as a validated JSON document on the tune (`src/lib/chart.ts`).
 
-Rotation: `GET/POST /api/tunes/:id/sessions` (`{ rating, practicedOn?, chart? }`, date defaults to today, `chart` is `"source"` or omitted), `DELETE /api/tunes/:id/sessions/:sessionId`, `POST /api/tunes/:id/shelve` and `/unshelve`, `GET /api/due`. `GET /api/tunes/:id` includes `lastPracticedOn`, `lastRating` and `dueOn`. The schedule is replayed from the Practice Sessions on every read (`src/lib/rotation.ts`). Dates are calendar dates in the `TIME_ZONE` var in `wrangler.jsonc` (IANA name, default `UTC`); set it to your own zone.
+Rotation: `GET/POST /api/tunes/:id/sessions` (`{ rating, practicedOn?, chart? }`, date defaults to today, `chart` is `"source"` or omitted), `DELETE /api/tunes/:id/sessions/:sessionId`, `POST /api/tunes/:id/shelve` and `/unshelve`, `GET /api/due`. `GET /api/tunes/:id` includes `lastPracticedOn`, `lastRating` and `dueOn`. The schedule is replayed from the Practice Sessions on every read (`src/lib/rotation.ts`). Dates are calendar dates in the `TIME_ZONE` var in `wrangler.jsonc` (IANA name, e.g. `Europe/Rome`).
 
 ## Deploy
 
