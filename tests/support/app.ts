@@ -42,3 +42,11 @@ export function sessionCookieFrom(response: Response): string {
 	if (!setCookie) throw new Error('response has no Set-Cookie');
 	return setCookie.split(';')[0];
 }
+
+export function jsonRequest(path: string, method: string, body?: unknown): Request {
+	return new Request(`https://woodshed.test${path}`, {
+		method,
+		headers: { 'content-type': 'application/json' },
+		body: body === undefined ? undefined : JSON.stringify(body)
+	});
+}
