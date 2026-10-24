@@ -53,6 +53,8 @@ export interface Chart {
 
 export type SourceChartStatus = 'draft' | 'verified';
 
+export type SimplifiedChartOrigin = 'manual';
+
 const ALTERATION = String.raw`(?:[#b]\d{1,2}|add\d{1,2}|sus[24]?|maj\d{1,2}|alt)`;
 const CHORD_PATTERN = new RegExp(
 	String.raw`^[A-G][#b]?` +
@@ -172,6 +174,22 @@ export function sameBarGrid(a: Chart, b: Chart): boolean {
 		}
 	}
 	return true;
+}
+
+export function differingBars(source: Chart, simplified: Chart): number[] {
+	const sourceBars = source.sections.flatMap((section) => section.bars);
+	const simplifiedBars = simplified.sections.flatMap((section) => section.bars);
+	return simplifiedBars.flatMap((bar, i) => (sameChords(bar, sourceBars[i]) ? [] : [i]));
+}
+
+function sameChords(a: Bar, b: Bar | undefined): boolean {
+	return (
+		b !== undefined &&
+		a.chords.length === b.chords.length &&
+		a.chords.every(
+			(chord, i) => chord.beat === b.chords[i].beat && chord.symbol === b.chords[i].symbol
+		)
+	);
 }
 
 export function validateChart(chart: unknown): Result<Chart> {

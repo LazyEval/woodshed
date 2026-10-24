@@ -16,6 +16,7 @@ import {
 import type { Deps } from '#lib/server/deps.js';
 import { practiceSessions, tunes } from '#lib/server/db/schema.js';
 import { jsonError, readBody, tuneNotFound } from '#lib/server/http.js';
+import { listSimplifiedCharts } from '#lib/server/simplified-charts.js';
 
 interface NewPracticeSession {
 	practicedOn: CalendarDate;
@@ -67,7 +68,11 @@ function standingOf(deps: Deps, tune: Pick<TuneRow, 'verifiedAt' | 'shelved'>): 
 }
 
 export async function tuneDetail(deps: Deps, tune: TuneRow) {
-	return { ...tune, ...schedule(await sessionsOf(deps, tune.id), standingOf(deps, tune)) };
+	const [sessions, simplifiedCharts] = await Promise.all([
+		sessionsOf(deps, tune.id),
+		listSimplifiedCharts(deps, tune.id)
+	]);
+	return { ...tune, ...schedule(sessions, standingOf(deps, tune)), simplifiedCharts };
 }
 
 export async function listDueTunes(deps: Deps): Promise<Response> {

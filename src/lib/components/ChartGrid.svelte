@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { effectiveTimeSignatures, keyCenterHue, keyCenterName, type Chart } from '#lib/chart.js';
 
-	let { chart }: { chart: Chart } = $props();
+	let { chart, highlightedBars = [] }: { chart: Chart; highlightedBars?: number[] } = $props();
+
+	const highlighted = $derived(new Set(highlightedBars));
 
 	const signatures = $derived(effectiveTimeSignatures(chart));
 	const offsets = $derived(
@@ -63,6 +65,7 @@
 					class:repeat-end={bar.repeatEnd}
 					class:ending={bar.ending}
 					class:key-centered={keyCenter}
+					class:differs={highlighted.has(offsets[s] + b)}
 					class:under-first-ending={b in secondEndingColumns[s]}
 					style:--ending-column={secondEndingColumns[s][b]}
 					style:--hue={keyCenter && keyCenterHue(keyCenter)}
@@ -129,6 +132,10 @@
 		.key-centered {
 			background: hsl(var(--hue) 60% 55% / 0.3);
 		}
+	}
+	.differs {
+		outline: 3px solid orange;
+		outline-offset: -3px;
 	}
 	.legend {
 		display: flex;
