@@ -3,7 +3,7 @@
 	import ChartGrid from '#lib/components/ChartGrid.svelte';
 	import ChordsEditor from '#lib/components/ChordsEditor.svelte';
 	import { differingBars, type Chart, type SimplifiedChartOrigin } from '#lib/chart.js';
-	import type { SimplifiedChartView, TuneDetail } from '#lib/tune.js';
+	import { isArchived, type SimplifiedChartView, type TuneDetail } from '#lib/tune.js';
 
 	interface Props {
 		tune: TuneDetail;
@@ -46,6 +46,15 @@
 	}
 </script>
 
+{#snippet deleteControls()}
+	{#if confirmingDelete}
+		<button type="button" disabled={action.busy} onclick={remove}>Confirm delete</button>
+		<button type="button" onclick={() => (confirmingDelete = false)}>Keep</button>
+	{:else}
+		<button type="button" onclick={() => (confirmingDelete = true)}>Delete</button>
+	{/if}
+{/snippet}
+
 {#if renaming}
 	<form onsubmit={rename}>
 		<label>Name <input bind:value={name} required maxlength="100" /></label>
@@ -56,22 +65,17 @@
 	<h2>
 		{simplified.name}
 		<small>
-			Simplified Chart · {ORIGIN_LABELS[simplified.origin]}{simplified.archivedAt
+			Simplified Chart · {ORIGIN_LABELS[simplified.origin]}{isArchived(simplified)
 				? ' · Archived'
 				: ''}
 		</small>
 	</h2>
 {/if}
 
-{#if simplified.archivedAt}
+{#if isArchived(simplified)}
 	<ChartGrid chart={simplified.chart} />
 	<p>Archived: the Source Chart's bar grid changed. Read-only.</p>
-	{#if confirmingDelete}
-		<button type="button" disabled={action.busy} onclick={remove}>Confirm delete</button>
-		<button type="button" onclick={() => (confirmingDelete = false)}>Keep</button>
-	{:else}
-		<button type="button" onclick={() => (confirmingDelete = true)}>Delete</button>
-	{/if}
+	{@render deleteControls()}
 	{#if action.error}<p role="alert">{action.error}</p>{/if}
 {:else if editing}
 	<ChordsEditor
@@ -91,11 +95,6 @@
 	/>
 	<button type="button" onclick={() => (editing = true)}>Edit chords</button>
 	<button type="button" onclick={startRenaming}>Rename</button>
-	{#if confirmingDelete}
-		<button type="button" disabled={action.busy} onclick={remove}>Confirm delete</button>
-		<button type="button" onclick={() => (confirmingDelete = false)}>Keep</button>
-	{:else}
-		<button type="button" onclick={() => (confirmingDelete = true)}>Delete</button>
-	{/if}
+	{@render deleteControls()}
 	{#if action.error}<p role="alert">{action.error}</p>{/if}
 {/if}

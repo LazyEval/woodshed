@@ -2,11 +2,16 @@ import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import { differingBars, emptyChart, isValidKey, sameBarGrid, validateChart } from '#lib/chart.js';
 import type { Result } from '#lib/result.js';
 import type { Deps } from '#lib/server/deps.js';
-import { simplifiedCharts, tunes } from '#lib/server/db/schema.js';
+import { tunes } from '#lib/server/db/schema.js';
 import { deleteScanPages } from '#lib/server/scans.js';
 import { jsonError, readBody, tuneNotFound } from '#lib/server/http.js';
 import { scheduleOf, type TuneRow } from '#lib/server/rotation.js';
-import { listSimplifiedCharts } from '#lib/server/simplified-charts.js';
+import {
+	archive,
+	flagBars,
+	listLiveSimplifiedCharts,
+	listSimplifiedCharts
+} from '#lib/server/simplified-charts.js';
 
 const MAX_TEXT_LENGTH = 200;
 
@@ -157,7 +162,7 @@ export async function markChartVerified(
 	if (tune.sourceChartStatus === 'verified') return Response.json(tune);
 
 	const now = deps.clock.now().getTime();
-	const markTune = deps.db
+	const verifyTune = deps.db
 		.update(tunes)
 		.set({
 			sourceChartStatus: 'verified',
@@ -168,22 +173,15 @@ export async function markChartVerified(
 		.where(eq(tunes.id, id))
 		.returning();
 
-	const live = (await listSimplifiedCharts(deps, id)).filter((chart) => !chart.archivedAt);
-	const baseline = tune.verifiedChart;
-	if (!baseline || live.length === 0) return Response.json((await markTune)[0]);
+	const liveCharts = await listLiveSimplifiedCharts(deps, id);
+	const lastVerified = tune.verifiedChart;
+	if (!lastVerified || liveCharts.length === 0) return Response.json((await verifyTune)[0]);
 
-	if (sameBarGrid(baseline, tune.sourceChart)) {
-		const changedBars = differingBars(baseline, tune.sourceChart);
-		const flagUpdates = live.map((chart) =>
-			deps.db
-				.update(simplifiedCharts)
-				.set({
-					flaggedBars: [...new Set([...chart.flaggedBars, ...changedBars])].sort((a, b) => a - b)
-				})
-				.where(eq(simplifiedCharts.id, chart.id))
-		);
-		const [[changed]] = await deps.db.batch([markTune, ...flagUpdates]);
-		return Response.json(changed);
+	if (sameBarGrid(lastVerified, tune.sourceChart)) {
+		const changedBars = differingBars(lastVerified, tune.sourceChart);
+		const flagUpdates = liveCharts.map((chart) => flagBars(deps, chart, changedBars));
+		const [[verified]] = await deps.db.batch([verifyTune, ...flagUpdates]);
+		return Response.json(verified);
 	}
 
 	if (body.confirmArchive !== true) {
@@ -191,19 +189,14 @@ export async function markChartVerified(
 			{
 				error:
 					'The bar grid changed, so verifying archives the Simplified Charts. Confirm to continue.',
-				simplifiedCharts: live.map((chart) => chart.name)
+				simplifiedCharts: liveCharts.map((chart) => chart.name)
 			},
 			{ status: 409 }
 		);
 	}
-	const archiveUpdates = live.map((chart) =>
-		deps.db
-			.update(simplifiedCharts)
-			.set({ archivedAt: now })
-			.where(eq(simplifiedCharts.id, chart.id))
-	);
-	const [[changed]] = await deps.db.batch([markTune, ...archiveUpdates]);
-	return Response.json(changed);
+	const archiveUpdates = liveCharts.map((chart) => archive(deps, chart, now));
+	const [[verified]] = await deps.db.batch([verifyTune, ...archiveUpdates]);
+	return Response.json(verified);
 }
 
 export async function deleteTune(deps: Deps, id: string): Promise<Response> {

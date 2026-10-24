@@ -25,3 +25,6 @@ export interface TuneDetail extends TuneSummary, Schedule {
 	scanPageCount: number;
 	verifiedAt: number | null;
 }
+
+export const isArchived = (chart: Pick<SimplifiedChartView, 'archivedAt'>) =>
+	chart.archivedAt !== null;

@@ -1,5 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import { isRecord, sameBarGrid, validateChart } from '#lib/chart.js';
+import { isArchived } from '#lib/tune.js';
 import type { Result } from '#lib/result.js';
 import type { Deps } from '#lib/server/deps.js';
 import { simplifiedCharts, tunes } from '#lib/server/db/schema.js';
@@ -22,6 +23,32 @@ export function listSimplifiedCharts(deps: Deps, tuneId: string) {
 		.from(simplifiedCharts)
 		.where(eq(simplifiedCharts.tuneId, tuneId))
 		.orderBy(simplifiedCharts.createdAt, simplifiedCharts.id);
+}
+
+type SimplifiedChartRow = typeof simplifiedCharts.$inferSelect;
+
+export async function listLiveSimplifiedCharts(deps: Deps, tuneId: string) {
+	return (await listSimplifiedCharts(deps, tuneId)).filter((chart) => !isArchived(chart));
+}
+
+export function flagBars(deps: Deps, chart: SimplifiedChartRow, bars: number[]) {
+	return deps.db
+		.update(simplifiedCharts)
+		.set({ flaggedBars: [...new Set([...chart.flaggedBars, ...bars])].sort((a, b) => a - b) })
+		.where(eq(simplifiedCharts.id, chart.id));
+}
+
+export function archive(deps: Deps, chart: SimplifiedChartRow, archivedAt: number) {
+	return deps.db
+		.update(simplifiedCharts)
+		.set({ archivedAt })
+		.where(eq(simplifiedCharts.id, chart.id));
+}
+
+function findOwned(deps: Deps, tuneId: string, chartId: string) {
+	return deps.db.query.simplifiedCharts.findFirst({
+		where: and(eq(simplifiedCharts.id, chartId), eq(simplifiedCharts.tuneId, tuneId))
+	});
 }
 
 export async function createSimplifiedChart(
@@ -76,14 +103,12 @@ export async function updateSimplifiedChart(
 	}
 
 	const [existing, tune] = await Promise.all([
-		deps.db.query.simplifiedCharts.findFirst({
-			where: and(eq(simplifiedCharts.id, chartId), eq(simplifiedCharts.tuneId, tuneId))
-		}),
+		findOwned(deps, tuneId, chartId),
 		deps.db.query.tunes.findFirst({ where: eq(tunes.id, tuneId) })
 	]);
 	if (!tune) return tuneNotFound();
 	if (!existing) return chartNotFound();
-	if (existing.archivedAt) return archivedReadOnly();
+	if (isArchived(existing)) return archivedReadOnly();
 
 	if (body.value.chart !== undefined) {
 		const validated = validateChart(
@@ -128,11 +153,9 @@ export async function clearBarFlag(
 	chartId: string,
 	bar: number
 ): Promise<Response> {
-	const existing = await deps.db.query.simplifiedCharts.findFirst({
-		where: and(eq(simplifiedCharts.id, chartId), eq(simplifiedCharts.tuneId, tuneId))
-	});
+	const existing = await findOwned(deps, tuneId, chartId);
 	if (!existing) return chartNotFound();
-	if (existing.archivedAt) return archivedReadOnly();
+	if (isArchived(existing)) return archivedReadOnly();
 
 	const [saved] = await deps.db
 		.update(simplifiedCharts)
