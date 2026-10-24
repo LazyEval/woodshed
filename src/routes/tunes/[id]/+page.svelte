@@ -5,6 +5,7 @@
 	import TuneFields from '#lib/components/TuneFields.svelte';
 	import ChartEditor from '#lib/components/ChartEditor.svelte';
 	import ChartGrid from '#lib/components/ChartGrid.svelte';
+	import PracticeLog from '#lib/components/PracticeLog.svelte';
 	import type { Chart } from '#lib/chart.js';
 
 	let { data } = $props();
@@ -105,6 +106,8 @@
 			<button type="button" onclick={reopen}>Reopen</button>
 		{/if}
 	{/if}
+
+	<PracticeLog {tune} sessions={data.sessions} />
 
 	<hr />
 	<button type="button" onclick={remove}>Delete tune</button>

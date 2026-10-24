@@ -56,6 +56,7 @@
 					<small>
 						{[tune.composer, tune.key].filter(Boolean).join(' · ')}
 						{#if tune.sourceChartStatus === 'draft'}· Draft{/if}
+						{#if tune.shelved}· Shelved{/if}
 					</small>
 				</li>
 			{/each}

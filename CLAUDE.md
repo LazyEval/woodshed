@@ -20,7 +20,7 @@ Personal practice tool for jazz standards. SvelteKit on Cloudflare Workers, D1 (
 ## Structure
 
 - `src/hooks.server.ts`: builds `Deps`, runs the auth `guard` on every request (default deny; only the login page and its submit endpoint are public).
-- `src/lib/server/`: server-only code. `deps.ts` is the composition root (`Deps` = db, clock, ai, scans, secrets).
+- `src/lib/server/`: server-only code. `deps.ts` is the composition root (`Deps` = db, clock, ai, scans, secrets, timeZone).
 - `src/lib/server/db/schema.ts`: Drizzle schema. After changing it run `npm run db:generate` and commit the migration in `drizzle/`.
 - Route `+server.ts` files stay thin: delegate to a function in `src/lib/server/` taking `(request, deps)`.
 

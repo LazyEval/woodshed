@@ -1,5 +1,6 @@
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import type { Chart, SourceChartStatus } from '#lib/chart.js';
+import type { CalendarDate, PracticedChart, Rating } from '#lib/rotation.js';
 
 export const sessions = sqliteTable('sessions', {
 	tokenHash: text('token_hash').primaryKey(),
@@ -22,6 +23,23 @@ export const tunes = sqliteTable('tunes', {
 		.$type<SourceChartStatus>()
 		.notNull()
 		.default('draft'),
+	verifiedAt: integer('verified_at'),
+	shelved: integer('shelved', { mode: 'boolean' }).notNull().default(false),
 	createdAt: integer('created_at').notNull(),
 	updatedAt: integer('updated_at').notNull()
 });
+
+export const practiceSessions = sqliteTable(
+	'practice_sessions',
+	{
+		id: text('id').primaryKey(),
+		tuneId: text('tune_id')
+			.notNull()
+			.references(() => tunes.id, { onDelete: 'cascade' }),
+		practicedOn: text('practiced_on').$type<CalendarDate>().notNull(),
+		rating: text('rating').$type<Rating>().notNull(),
+		chart: text('chart').$type<PracticedChart>(),
+		createdAt: integer('created_at').notNull()
+	},
+	(table) => [index('practice_sessions_tune_idx').on(table.tuneId, table.practicedOn)]
+);
