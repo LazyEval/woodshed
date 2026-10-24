@@ -8,7 +8,7 @@ export default defineConfig(async () => {
 	return {
 		plugins: [
 			cloudflareTest({
-				main: './tests/support/worker.ts',
+				main: './.svelte-kit/cloudflare/_worker.js',
 				wrangler: { configPath: './wrangler.jsonc' },
 				miniflare: {
 					bindings: {

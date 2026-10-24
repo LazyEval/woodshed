@@ -17,13 +17,12 @@ export function createTestApp(overrides: Partial<Deps> = {}): TestApp {
 
 export const APP_PASSWORD = env.APP_PASSWORD;
 
-export function loginRequest(password: string, ip = '203.0.113.7'): Request {
+export function loginRequest(password: string, ip: string | null = '203.0.113.7'): Request {
+	const headers = new Headers({ 'content-type': 'application/x-www-form-urlencoded' });
+	if (ip) headers.set('cf-connecting-ip', ip);
 	return new Request('https://woodshed.test/login/submit', {
 		method: 'POST',
-		headers: {
-			'content-type': 'application/x-www-form-urlencoded',
-			'cf-connecting-ip': ip
-		},
+		headers,
 		body: new URLSearchParams({ password })
 	});
 }

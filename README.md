@@ -26,17 +26,17 @@ npm run db:migrate:local         # create local D1 tables
 npm run dev
 ```
 
-| Command                                          | What                                             |
-| ------------------------------------------------ | ------------------------------------------------ |
-| `npm run dev`                                    | Dev server with local D1/R2 bindings             |
-| `npm run preview`                                | Production build served by `wrangler dev`        |
-| `npm run check`                                  | Typecheck (`svelte-check`)                       |
-| `npm run lint`                                   | Prettier check + ESLint                          |
-| `npm run format`                                 | Prettier write                                   |
-| `npm test`                                       | Tests in the Workers runtime (Vitest)            |
-| `npm run db:generate`                            | Generate a Drizzle migration after schema change |
-| `npm run db:migrate:local` / `db:migrate:remote` | Apply D1 migrations                              |
-| `npm run types`                                  | Regenerate `worker-configuration.d.ts`           |
+| Command                                          | What                                              |
+| ------------------------------------------------ | ------------------------------------------------- |
+| `npm run dev`                                    | Dev server with local D1/R2 bindings              |
+| `npm run preview`                                | Production build served by `wrangler dev`         |
+| `npm run check`                                  | Typecheck (`svelte-check`)                        |
+| `npm run lint`                                   | Prettier check + ESLint                           |
+| `npm run format`                                 | Prettier write                                    |
+| `npm test`                                       | Build, then tests in the Workers runtime (Vitest) |
+| `npm run db:generate`                            | Generate a Drizzle migration after schema change  |
+| `npm run db:migrate:local` / `db:migrate:remote` | Apply D1 migrations                               |
+| `npm run types`                                  | Regenerate `worker-configuration.d.ts`            |
 
 Tests exercise the server request handlers (`Request` to `Response`) against local D1/R2 with a fake clock and fake AI client. See `CLAUDE.md`.
 
