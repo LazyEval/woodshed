@@ -15,6 +15,8 @@ export interface SimplifiedChartView {
 	name: string;
 	origin: SimplifiedChartOrigin;
 	chart: Chart;
+	flaggedBars: number[];
+	archivedAt: number | null;
 }
 
 export interface TuneDetail extends TuneSummary, Schedule {

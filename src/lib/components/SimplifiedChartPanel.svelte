@@ -37,6 +37,10 @@
 		if (await action.run(path, 'PUT', { chart })) editing = false;
 	}
 
+	async function clearFlag(bar: number) {
+		await action.run(`${path}/flags/${bar}`, 'DELETE');
+	}
+
 	async function remove() {
 		if (await action.run(path, 'DELETE')) ondeleted();
 	}
@@ -51,11 +55,25 @@
 {:else}
 	<h2>
 		{simplified.name}
-		<small>Simplified Chart · {ORIGIN_LABELS[simplified.origin]}</small>
+		<small>
+			Simplified Chart · {ORIGIN_LABELS[simplified.origin]}{simplified.archivedAt
+				? ' · Archived'
+				: ''}
+		</small>
 	</h2>
 {/if}
 
-{#if editing}
+{#if simplified.archivedAt}
+	<ChartGrid chart={simplified.chart} />
+	<p>Archived: the Source Chart's bar grid changed. Read-only.</p>
+	{#if confirmingDelete}
+		<button type="button" disabled={action.busy} onclick={remove}>Confirm delete</button>
+		<button type="button" onclick={() => (confirmingDelete = false)}>Keep</button>
+	{:else}
+		<button type="button" onclick={() => (confirmingDelete = true)}>Delete</button>
+	{/if}
+	{#if action.error}<p role="alert">{action.error}</p>{/if}
+{:else if editing}
 	<ChordsEditor
 		chart={simplified.chart}
 		saving={action.busy}
@@ -67,6 +85,9 @@
 	<ChartGrid
 		chart={simplified.chart}
 		highlightedBars={differingBars(tune.sourceChart, simplified.chart)}
+		flaggedBars={simplified.flaggedBars}
+		onclearflag={clearFlag}
+		busy={action.busy}
 	/>
 	<button type="button" onclick={() => (editing = true)}>Edit chords</button>
 	<button type="button" onclick={startRenaming}>Rename</button>

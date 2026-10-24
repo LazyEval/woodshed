@@ -19,3 +19,8 @@ export async function readBody(request: Request): Promise<Result<Record<string, 
 	const body = await readJson(request);
 	return isRecord(body) ? { value: body } : { error: 'Request body must be a JSON object.' };
 }
+
+export async function readOptionalBody(request: Request): Promise<Record<string, unknown>> {
+	const body = await readJson(request);
+	return isRecord(body) ? body : {};
+}

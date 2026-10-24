@@ -8,6 +8,7 @@ import { jsonError, readBody, tuneNotFound } from '#lib/server/http.js';
 const MAX_NAME_LENGTH = 100;
 
 const chartNotFound = () => jsonError('Simplified Chart not found.', 404);
+const archivedReadOnly = () => jsonError('Archived Simplified Charts are read-only.', 409);
 
 function parseName(value: unknown): Result<string> {
 	if (typeof value !== 'string' || !value.trim()) return { error: 'Name is required.' };
@@ -82,6 +83,7 @@ export async function updateSimplifiedChart(
 	]);
 	if (!tune) return tuneNotFound();
 	if (!existing) return chartNotFound();
+	if (existing.archivedAt) return archivedReadOnly();
 
 	if (body.value.chart !== undefined) {
 		const validated = validateChart(
@@ -118,4 +120,24 @@ export async function deleteSimplifiedChart(
 		.where(and(eq(simplifiedCharts.id, chartId), eq(simplifiedCharts.tuneId, tuneId)))
 		.returning({ id: simplifiedCharts.id });
 	return deleted.length ? new Response(null, { status: 204 }) : chartNotFound();
+}
+
+export async function clearBarFlag(
+	deps: Deps,
+	tuneId: string,
+	chartId: string,
+	bar: number
+): Promise<Response> {
+	const existing = await deps.db.query.simplifiedCharts.findFirst({
+		where: and(eq(simplifiedCharts.id, chartId), eq(simplifiedCharts.tuneId, tuneId))
+	});
+	if (!existing) return chartNotFound();
+	if (existing.archivedAt) return archivedReadOnly();
+
+	const [saved] = await deps.db
+		.update(simplifiedCharts)
+		.set({ flaggedBars: existing.flaggedBars.filter((flagged) => flagged !== bar) })
+		.where(eq(simplifiedCharts.id, chartId))
+		.returning();
+	return Response.json(saved);
 }

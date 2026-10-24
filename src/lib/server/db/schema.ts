@@ -24,6 +24,7 @@ export const tunes = sqliteTable('tunes', {
 		.notNull()
 		.default('draft'),
 	verifiedAt: integer('verified_at'),
+	verifiedChart: text('verified_chart', { mode: 'json' }).$type<Chart>(),
 	shelved: integer('shelved', { mode: 'boolean' }).notNull().default(false),
 	scanPageCount: integer('scan_page_count').notNull().default(0),
 	createdAt: integer('created_at').notNull(),
@@ -55,6 +56,8 @@ export const simplifiedCharts = sqliteTable(
 		name: text('name').notNull(),
 		origin: text('origin').$type<SimplifiedChartOrigin>().notNull(),
 		chart: text('chart', { mode: 'json' }).$type<Chart>().notNull(),
+		flaggedBars: text('flagged_bars', { mode: 'json' }).$type<number[]>().notNull().default([]),
+		archivedAt: integer('archived_at'),
 		createdAt: integer('created_at').notNull(),
 		updatedAt: integer('updated_at').notNull()
 	},

@@ -176,10 +176,10 @@ export function sameBarGrid(a: Chart, b: Chart): boolean {
 	return true;
 }
 
-export function differingBars(source: Chart, simplified: Chart): number[] {
-	const sourceBars = source.sections.flatMap((section) => section.bars);
-	const simplifiedBars = simplified.sections.flatMap((section) => section.bars);
-	return simplifiedBars.flatMap((bar, i) => (sameChords(bar, sourceBars[i]) ? [] : [i]));
+export function differingBars(reference: Chart, compared: Chart): number[] {
+	const referenceBars = reference.sections.flatMap((section) => section.bars);
+	const comparedBars = compared.sections.flatMap((section) => section.bars);
+	return comparedBars.flatMap((bar, i) => (sameChords(bar, referenceBars[i]) ? [] : [i]));
 }
 
 function sameChords(a: Bar, b: Bar | undefined): boolean {
