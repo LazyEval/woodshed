@@ -6,7 +6,8 @@ import type { Deps } from '#lib/server/deps.js';
 import { tunes } from '#lib/server/db/schema.js';
 import { deleteScanPages } from '#lib/server/scans.js';
 import { jsonError, readBody, tuneNotFound } from '#lib/server/http.js';
-import { tuneDetail } from '#lib/server/rotation.js';
+import { scheduleOf, type TuneRow } from '#lib/server/rotation.js';
+import { listSimplifiedCharts } from '#lib/server/simplified-charts.js';
 
 const MAX_TEXT_LENGTH = 200;
 
@@ -41,6 +42,14 @@ function parseFields(body: Record<string, unknown>): Result<TuneFields> {
 }
 
 const VERIFIED_LOCKED = 'Source Chart is Verified and cannot be edited. Reopen it first.';
+
+async function tuneDetail(deps: Deps, tune: TuneRow) {
+	const [schedule, simplifiedCharts] = await Promise.all([
+		scheduleOf(deps, tune),
+		listSimplifiedCharts(deps, tune.id)
+	]);
+	return { ...tune, ...schedule, simplifiedCharts };
+}
 
 function findTune(deps: Deps, id: string) {
 	return deps.db.query.tunes.findFirst({ where: eq(tunes.id, id) });
@@ -161,3 +170,16 @@ export async function deleteTune(deps: Deps, id: string): Promise<Response> {
 	await deleteScanPages(deps, id, deleted.scanPageCount);
 	return new Response(null, { status: 204 });
 }
+
+async function setShelved(deps: Deps, tuneId: string, shelved: boolean): Promise<Response> {
+	const [tune] = await deps.db
+		.update(tunes)
+		.set({ shelved, updatedAt: deps.clock.now().getTime() })
+		.where(eq(tunes.id, tuneId))
+		.returning();
+	return tune ? Response.json(await tuneDetail(deps, tune)) : tuneNotFound();
+}
+
+export const shelveTune = (deps: Deps, tuneId: string) => setShelved(deps, tuneId, true);
+
+export const unshelveTune = (deps: Deps, tuneId: string) => setShelved(deps, tuneId, false);

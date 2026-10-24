@@ -5,6 +5,8 @@
 	import TuneFields from '#lib/components/TuneFields.svelte';
 	import ChartEditor from '#lib/components/ChartEditor.svelte';
 	import ChartGrid from '#lib/components/ChartGrid.svelte';
+	import ChartTabs from '#lib/components/ChartTabs.svelte';
+	import SimplifiedChartPanel from '#lib/components/SimplifiedChartPanel.svelte';
 	import PracticeLog from '#lib/components/PracticeLog.svelte';
 	import type { Chart } from '#lib/chart.js';
 
@@ -78,6 +80,13 @@
 		if (result.ok) await invalidateAll();
 	}
 
+	let selectedChartId = $state<string | null>(null);
+	let editingSimplified = $state(false);
+
+	const selectedSimplified = $derived(
+		tune.simplifiedCharts.find((chart) => chart.id === selectedChartId) ?? null
+	);
+
 	async function remove() {
 		if (!confirm(`Delete "${tune.title}"? This cannot be undone.`)) return;
 		const result = await send(`/api/tunes/${tune.id}`, 'DELETE');
@@ -127,28 +136,47 @@
 		{/if}
 
 		<section>
-			<h2>
-				Source Chart
-				<small>{tune.sourceChartStatus === 'verified' ? 'Verified' : 'Draft'}</small>
-			</h2>
+			{#if tune.simplifiedCharts.length || tune.sourceChartStatus === 'verified'}
+				<ChartTabs
+					{tune}
+					bind:selectedId={selectedChartId}
+					locked={editingChart || editingSimplified}
+				/>
+			{/if}
 
-			{#if editingChart}
-				<ChartEditor chart={tune.sourceChart} {saving} error={chartError} onsave={saveChart} />
-				<button type="button" onclick={() => (editingChart = false)}>Cancel</button>
+			{#if selectedSimplified}
+				{#key selectedSimplified.id}
+					<SimplifiedChartPanel
+						{tune}
+						simplified={selectedSimplified}
+						bind:editing={editingSimplified}
+						ondeleted={() => (selectedChartId = null)}
+					/>
+				{/key}
 			{:else}
-				<ChartGrid chart={tune.sourceChart} />
-				{#if tune.sourceChartStatus === 'draft'}
-					<button type="button" onclick={() => (editingChart = true)}>Edit chart</button>
-					<button type="button" onclick={verify}>Mark Verified</button>
-					{#if tune.scanPageCount > 0}
-						<button type="button" onclick={reextractWithOpus} disabled={extracting}>
-							Re-extract with Opus
-						</button>
-						{#if extracting}<p role="status">Extracting the chart from the Scan…</p>{/if}
-						{#if extractError}<p role="alert">{extractError}</p>{/if}
-					{/if}
+				<h2>
+					Source Chart
+					<small>{tune.sourceChartStatus === 'verified' ? 'Verified' : 'Draft'}</small>
+				</h2>
+
+				{#if editingChart}
+					<ChartEditor chart={tune.sourceChart} {saving} error={chartError} onsave={saveChart} />
+					<button type="button" onclick={() => (editingChart = false)}>Cancel</button>
 				{:else}
-					<button type="button" onclick={reopen}>Reopen</button>
+					<ChartGrid chart={tune.sourceChart} />
+					{#if tune.sourceChartStatus === 'draft'}
+						<button type="button" onclick={() => (editingChart = true)}>Edit chart</button>
+						<button type="button" onclick={verify}>Mark Verified</button>
+						{#if tune.scanPageCount > 0}
+							<button type="button" onclick={reextractWithOpus} disabled={extracting}>
+								Re-extract with Opus
+							</button>
+							{#if extracting}<p role="status">Extracting the chart from the Scan…</p>{/if}
+							{#if extractError}<p role="alert">{extractError}</p>{/if}
+						{/if}
+					{:else}
+						<button type="button" onclick={reopen}>Reopen</button>
+					{/if}
 				{/if}
 			{/if}
 		</section>

@@ -5,15 +5,15 @@ import {
 	deleteTune,
 	getTune,
 	markChartVerified,
-	reopenSourceChart
+	reopenSourceChart,
+	shelveTune,
+	unshelveTune
 } from '#lib/server/tunes.js';
 import {
 	deletePracticeSession,
 	listDueTunes,
 	listPracticeSessions,
-	logPracticeSession,
-	shelveTune,
-	unshelveTune
+	logPracticeSession
 } from '#lib/server/rotation.js';
 import { createTestApp, jsonRequest, type TestApp } from './support/app';
 

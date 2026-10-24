@@ -1,4 +1,4 @@
-import type { Chart, SourceChartStatus } from '#lib/chart.js';
+import type { Chart, SimplifiedChartOrigin, SourceChartStatus } from '#lib/chart.js';
 import type { Schedule } from '#lib/rotation.js';
 
 export interface TuneSummary {
@@ -10,8 +10,16 @@ export interface TuneSummary {
 	shelved: boolean;
 }
 
+export interface SimplifiedChartView {
+	id: string;
+	name: string;
+	origin: SimplifiedChartOrigin;
+	chart: Chart;
+}
+
 export interface TuneDetail extends TuneSummary, Schedule {
 	sourceChart: Chart;
+	simplifiedCharts: SimplifiedChartView[];
 	scanPageCount: number;
 	verifiedAt: number | null;
 }

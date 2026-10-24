@@ -23,7 +23,7 @@ interface NewPracticeSession {
 	chart: PracticedChart | null;
 }
 
-type TuneRow = typeof tunes.$inferSelect;
+export type TuneRow = typeof tunes.$inferSelect;
 
 const practiceOrder = [asc(practiceSessions.practicedOn), asc(practiceSessions.createdAt)];
 
@@ -66,8 +66,8 @@ function standingOf(deps: Deps, tune: Pick<TuneRow, 'verifiedAt' | 'shelved'>): 
 	};
 }
 
-export async function tuneDetail(deps: Deps, tune: TuneRow) {
-	return { ...tune, ...schedule(await sessionsOf(deps, tune.id), standingOf(deps, tune)) };
+export async function scheduleOf(deps: Deps, tune: TuneRow) {
+	return schedule(await sessionsOf(deps, tune.id), standingOf(deps, tune));
 }
 
 export async function listDueTunes(deps: Deps): Promise<Response> {
@@ -151,16 +151,3 @@ export async function deletePracticeSession(
 		? new Response(null, { status: 204 })
 		: jsonError('Practice Session not found.', 404);
 }
-
-async function setShelved(deps: Deps, tuneId: string, shelved: boolean): Promise<Response> {
-	const [tune] = await deps.db
-		.update(tunes)
-		.set({ shelved, updatedAt: deps.clock.now().getTime() })
-		.where(eq(tunes.id, tuneId))
-		.returning();
-	return tune ? Response.json(await tuneDetail(deps, tune)) : tuneNotFound();
-}
-
-export const shelveTune = (deps: Deps, tuneId: string) => setShelved(deps, tuneId, true);
-
-export const unshelveTune = (deps: Deps, tuneId: string) => setShelved(deps, tuneId, false);
