@@ -93,7 +93,8 @@ Rules:
 - Repeats: set repeatStart on the first bar of a repeated passage and repeatEnd on its last bar. Set ending to 1 or 2 on bars under a first or second ending. The last bar of a first ending MUST have repeatEnd: true (the repeat sign printed at the end of the first ending), and the second ending follows it. Example: bars 7-8 are the first ending and bar 9 the second: bar 7 {ending:1}, bar 8 {ending:1, repeatEnd:true}, bar 9 {ending:2}.
 - Set timeSignature on a bar only where the time signature is printed or changes. Assume 4/4 otherwise.
 - title, composer and key come from the page; use null when not printed. key is the tonic with an optional "m" for minor, e.g. "Bb" or "F#m".
-- keyCenters: propose spans of bars (1-based, counted across the whole chart from the first section to the last, inclusive) that function in a single local key, with the tonic as a note name like "C", "Bb" or "F#" and mode "major" or "minor". Spans must not overlap. Use an empty list if unsure.`;
+- keyCenters: spans of bars (1-based, counted across the whole chart from the first section to the last, inclusive) that function in a single local key, with the tonic as a note name like "C", "Bb" or "F#" and mode "major" or "minor". Spans must not overlap and together must cover every bar, so no bar is left without a key center.
+- Be conservative: most tunes sit in one key, so by default use a single key center spanning the whole chart. A chord that is diatonic to the home key (I, ii, iii, IV, V, vi, even when it lasts several bars) stays in the home key; a long IV chord is not a new key center. Only add a different key center where a ii-V (or longer progression) clearly tonicizes another key, or the tune truly modulates, and keep that span to the bars involved.`;
 
 interface MessagesResponse {
 	content?: { type: string; text?: string }[];
