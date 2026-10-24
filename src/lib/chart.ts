@@ -53,7 +53,23 @@ export interface Chart {
 
 export type SourceChartStatus = 'draft' | 'verified';
 
-export type SimplifiedChartOrigin = 'manual';
+export type SimplifiedChartOrigin = 'manual' | 'generated';
+
+export interface RuleSnapshot {
+	name: string;
+	text: string;
+}
+
+export interface BarReason {
+	bar: number;
+	reason: string;
+}
+
+export interface GenerationRecord {
+	rules: RuleSnapshot[];
+	note: string | null;
+	reasons: BarReason[];
+}
 
 const ALTERATION = String.raw`(?:[#b]\d{1,2}|add\d{1,2}|sus[24]?|maj\d{1,2}|alt)`;
 const CHORD_PATTERN = new RegExp(

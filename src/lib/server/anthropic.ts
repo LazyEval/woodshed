@@ -1,4 +1,10 @@
-import type { AiClient, ExtractionModel, ExtractionRequest, ScanImage } from '#lib/server/ai.js';
+import type {
+	AiClient,
+	ExtractionModel,
+	ExtractionRequest,
+	GenerationRequest,
+	ScanImage
+} from '#lib/server/ai.js';
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const API_VERSION = '2023-06-01';
@@ -83,6 +89,53 @@ const EXTRACTION_SCHEMA = {
 	additionalProperties: false
 };
 
+const GENERATION_SCHEMA = {
+	type: 'object',
+	properties: {
+		chart: {
+			type: 'object',
+			properties: {
+				sections: {
+					type: 'array',
+					items: {
+						type: 'object',
+						properties: {
+							label: { type: 'string' },
+							bars: { type: 'array', items: barSchema }
+						},
+						required: ['label', 'bars'],
+						additionalProperties: false
+					}
+				}
+			},
+			required: ['sections'],
+			additionalProperties: false
+		},
+		changes: {
+			type: 'array',
+			items: {
+				type: 'object',
+				properties: { bar: { type: 'integer' }, reason: { type: 'string' } },
+				required: ['bar', 'reason'],
+				additionalProperties: false
+			}
+		}
+	},
+	required: ['chart', 'changes'],
+	additionalProperties: false
+};
+
+const GENERATION_MODEL = MODEL_IDS.opus;
+
+const GENERATION_PROMPT = `You simplify a jazz chart by applying the user's plain-language Rules, returning a chord overlay on the exact same bar grid.
+
+Requirements:
+- Return the whole chart in "chart": the same sections (same labels, same order), the same number of bars per section, and the same repeatStart, repeatEnd, ending and timeSignature marks on every bar as the Source Chart. Only the chords may change.
+- Chord symbols: root A-G with optional # or b, then quality and extensions such as m7, maj7, 7b9, m7b5, dim7, sus4, 6/9, with an optional slash bass (C/E). Write "N.C." for no chord. Do not use unicode flats or sharps. Each chord is placed on a beat from 1 to the bar's beat count, one chord per beat.
+- Read chord function against the Key Centers given with the Source Chart (bar ranges are 1-based, counted across all sections).
+- Apply the Rules where they fit and leave other bars exactly as in the Source Chart. Use judgement for edge cases such as turnarounds, secondary dominants and tritone substitutions. A one-off note, if given, adds to or adjusts the Rules for this chart.
+- "changes": one entry for every bar whose chords you changed, with "bar" the 1-based bar number counted across all sections, and "reason" one short sentence naming the Rule or idea applied. Do not list unchanged bars.`;
+
 const EXTRACTION_PROMPT = `You transcribe a jazz chart from the attached image(s) into structured data. The images are consecutive pages of one chart, in order.
 
 Rules:
@@ -118,44 +171,72 @@ function imageBlock(image: ScanImage) {
 	};
 }
 
+async function sendMessage(
+	apiKey: string,
+	fetcher: typeof fetch,
+	payload: { model: string; schema: object; content: unknown[] }
+): Promise<unknown> {
+	const response = await fetcher(API_URL, {
+		method: 'POST',
+		headers: {
+			'content-type': 'application/json',
+			'x-api-key': apiKey,
+			'anthropic-version': API_VERSION
+		},
+		body: JSON.stringify({
+			model: payload.model,
+			max_tokens: MAX_OUTPUT_TOKENS,
+			output_config: { format: { type: 'json_schema', schema: payload.schema } },
+			messages: [{ role: 'user', content: payload.content }]
+		})
+	});
+	const body = (await response.json()) as MessagesResponse;
+	if (!response.ok) {
+		throw new Error(`Anthropic API ${response.status}: ${body.error?.message ?? 'error'}`);
+	}
+	const text = body.content?.find((block) => block.type === 'text')?.text;
+	if (!text) return `Output was empty (stop reason: ${body.stop_reason}).`;
+	try {
+		return JSON.parse(text) as unknown;
+	} catch {
+		return `Output was not valid JSON (stop reason: ${body.stop_reason}).`;
+	}
+}
+
+function generationInstruction({ source, rules, note, previousProblem }: GenerationRequest) {
+	const sections = [
+		GENERATION_PROMPT,
+		`Source Chart (JSON, including keyCenters):\n${JSON.stringify(source)}`,
+		rules.length
+			? `Rules:\n${rules.map((rule, i) => `${i + 1}. ${rule.name}: ${rule.text}`).join('\n')}`
+			: 'Rules: none selected; follow the note.',
+		note ? `Note for this chart: ${note}` : null,
+		previousProblem
+			? `Your previous attempt was rejected: ${previousProblem}\nGenerate again and fix this.`
+			: null
+	];
+	return sections.filter(Boolean).join('\n\n');
+}
+
 export function createAnthropicAiClient(apiKey: string, fetcher: typeof fetch = fetch): AiClient {
 	return {
-		async extract({ images, model, previousProblem }: ExtractionRequest) {
+		extract({ images, model, previousProblem }: ExtractionRequest) {
 			const instruction = previousProblem
 				? `${EXTRACTION_PROMPT}\n\nYour previous attempt was rejected: ${previousProblem}\nTranscribe again and fix this.`
 				: EXTRACTION_PROMPT;
-			const response = await fetcher(API_URL, {
-				method: 'POST',
-				headers: {
-					'content-type': 'application/json',
-					'x-api-key': apiKey,
-					'anthropic-version': API_VERSION
-				},
-				body: JSON.stringify({
-					model: MODEL_IDS[model],
-					max_tokens: MAX_OUTPUT_TOKENS,
-					output_config: { format: { type: 'json_schema', schema: EXTRACTION_SCHEMA } },
-					messages: [
-						{
-							role: 'user',
-							content: [...images.map(imageBlock), { type: 'text', text: instruction }]
-						}
-					]
-				})
+			return sendMessage(apiKey, fetcher, {
+				model: MODEL_IDS[model],
+				schema: EXTRACTION_SCHEMA,
+				content: [...images.map(imageBlock), { type: 'text', text: instruction }]
 			});
-			const body = (await response.json()) as MessagesResponse;
-			if (!response.ok) {
-				throw new Error(`Anthropic API ${response.status}: ${body.error?.message ?? 'error'}`);
-			}
-			const text = body.content?.find((block) => block.type === 'text')?.text;
-			if (!text) return `Output was empty (stop reason: ${body.stop_reason}).`;
-			try {
-				return JSON.parse(text) as unknown;
-			} catch {
-				return `Output was not valid JSON (stop reason: ${body.stop_reason}).`;
-			}
 		},
 
-		generateSimplifiedChart: () => Promise.reject(new Error('Generation is not implemented yet'))
+		generate(request: GenerationRequest) {
+			return sendMessage(apiKey, fetcher, {
+				model: GENERATION_MODEL,
+				schema: GENERATION_SCHEMA,
+				content: [{ type: 'text', text: generationInstruction(request) }]
+			});
+		}
 	};
 }

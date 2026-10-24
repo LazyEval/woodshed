@@ -1,5 +1,10 @@
 import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
-import type { Chart, SimplifiedChartOrigin, SourceChartStatus } from '#lib/chart.js';
+import type {
+	Chart,
+	GenerationRecord,
+	SimplifiedChartOrigin,
+	SourceChartStatus
+} from '#lib/chart.js';
 import type { CalendarDate, PracticedChart, Rating } from '#lib/rotation.js';
 
 export const sessions = sqliteTable('sessions', {
@@ -57,6 +62,7 @@ export const simplifiedCharts = sqliteTable(
 		name: text('name').notNull(),
 		origin: text('origin').$type<SimplifiedChartOrigin>().notNull(),
 		chart: text('chart', { mode: 'json' }).$type<Chart>().notNull(),
+		generation: text('generation', { mode: 'json' }).$type<GenerationRecord>(),
 		flaggedBars: text('flagged_bars', { mode: 'json' }).$type<number[]>().notNull().default([]),
 		archivedAt: integer('archived_at'),
 		createdAt: integer('created_at').notNull(),
@@ -64,3 +70,11 @@ export const simplifiedCharts = sqliteTable(
 	},
 	(table) => [index('simplified_charts_tune_idx').on(table.tuneId, table.createdAt)]
 );
+
+export const rules = sqliteTable('rules', {
+	id: text('id').primaryKey(),
+	name: text('name').notNull(),
+	text: text('text').notNull(),
+	createdAt: integer('created_at').notNull(),
+	updatedAt: integer('updated_at').notNull()
+});

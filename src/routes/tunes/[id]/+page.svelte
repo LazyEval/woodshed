@@ -161,6 +161,7 @@
 			{#if tune.simplifiedCharts.length || tune.sourceChartStatus === 'verified'}
 				<ChartTabs
 					{tune}
+					rules={data.rules}
 					bind:selectedId={selectedChartId}
 					locked={editingChart || editingSimplified}
 				/>

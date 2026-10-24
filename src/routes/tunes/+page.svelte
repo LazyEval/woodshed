@@ -33,7 +33,7 @@
 </svelte:head>
 
 <main>
-	<p><a href={resolve('/')}>Home</a></p>
+	<p><a href={resolve('/')}>Home</a> · <a href={resolve('/rules')}>Rules</a></p>
 	<h1>Tunes</h1>
 
 	<form method="GET" role="search">

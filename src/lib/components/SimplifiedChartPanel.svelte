@@ -14,13 +14,17 @@
 
 	let { tune, simplified, editing = $bindable(), ondeleted }: Props = $props();
 
-	const ORIGIN_LABELS: Record<SimplifiedChartOrigin, string> = { manual: 'Written by hand' };
+	const ORIGIN_LABELS: Record<SimplifiedChartOrigin, string> = {
+		manual: 'Written by hand',
+		generated: 'Generated'
+	};
 
 	let renaming = $state(false);
 	let name = $state('');
 	let confirmingDelete = $state(false);
 	const action = new ApiAction();
 
+	const differing = $derived(differingBars(tune.sourceChart, simplified.chart));
 	const path = $derived(`/api/tunes/${tune.id}/simplified-charts/${simplified.id}`);
 
 	function startRenaming() {
@@ -86,9 +90,23 @@
 	/>
 	<button type="button" onclick={() => (editing = false)}>Cancel</button>
 {:else}
+	{#if simplified.generation}
+		<details>
+			<summary>Generation inputs</summary>
+			{#if simplified.generation.rules.length}
+				<ul>
+					{#each simplified.generation.rules as rule, i (i)}
+						<li><strong>{rule.name}</strong>: {rule.text}</li>
+					{/each}
+				</ul>
+			{/if}
+			{#if simplified.generation.note}<p>Note: {simplified.generation.note}</p>{/if}
+		</details>
+	{/if}
 	<ChartGrid
 		chart={simplified.chart}
-		highlightedBars={differingBars(tune.sourceChart, simplified.chart)}
+		reasons={simplified.generation?.reasons.filter(({ bar }) => differing.includes(bar))}
+		highlightedBars={differing}
 		flaggedBars={simplified.flaggedBars}
 		onclearflag={clearFlag}
 		busy={action.busy}

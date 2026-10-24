@@ -1,3 +1,5 @@
+import type { Chart, RuleSnapshot } from '#lib/chart.js';
+
 export interface ChartBar {
 	chords: string[];
 }
@@ -5,10 +7,6 @@ export interface ChartBar {
 export interface ChartSection {
 	name: string;
 	bars: ChartBar[];
-}
-
-export interface ChartGrid {
-	sections: ChartSection[];
 }
 
 export interface ScanImage {
@@ -25,27 +23,18 @@ export interface ExtractionRequest {
 }
 
 export interface GenerationRequest {
-	source: ChartGrid;
-	rules: string[];
-}
-
-export interface BarChange {
-	section: number;
-	bar: number;
-	reason: string;
-}
-
-export interface GenerationResult {
-	chart: ChartGrid;
-	changes: BarChange[];
+	source: Chart;
+	rules: RuleSnapshot[];
+	note: string | null;
+	previousProblem?: string;
 }
 
 export interface AiClient {
 	extract(request: ExtractionRequest): Promise<unknown>;
-	generateSimplifiedChart(request: GenerationRequest): Promise<GenerationResult>;
+	generate(request: GenerationRequest): Promise<unknown>;
 }
 
 export const unconfiguredAiClient: AiClient = {
 	extract: () => Promise.reject(new Error('AI client not configured')),
-	generateSimplifiedChart: () => Promise.reject(new Error('AI client not configured'))
+	generate: () => Promise.reject(new Error('AI client not configured'))
 };

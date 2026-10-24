@@ -1,10 +1,17 @@
 <script lang="ts">
-	import { effectiveTimeSignatures, keyCenterHue, keyCenterName, type Chart } from '#lib/chart.js';
+	import {
+		effectiveTimeSignatures,
+		keyCenterHue,
+		keyCenterName,
+		type BarReason,
+		type Chart
+	} from '#lib/chart.js';
 
 	interface Props {
 		chart: Chart;
 		highlightedBars?: number[];
 		flaggedBars?: number[];
+		reasons?: BarReason[];
 		onclearflag?: (bar: number) => void;
 		busy?: boolean;
 	}
@@ -13,12 +20,15 @@
 		chart,
 		highlightedBars = [],
 		flaggedBars = [],
+		reasons = [],
 		onclearflag,
 		busy = false
 	}: Props = $props();
 
 	const highlighted = $derived(new Set(highlightedBars));
 	const flagged = $derived(new Set(flaggedBars));
+	const reasonByBar = $derived(new Map(reasons.map(({ bar, reason }) => [bar, reason])));
+	let openReasonBar = $state<number | null>(null);
 
 	const signatures = $derived(effectiveTimeSignatures(chart));
 	const offsets = $derived(
@@ -97,6 +107,21 @@
 					{#each bar.chords as chord (chord.beat)}
 						<span class="chord" style:grid-column={chord.beat}>{chord.symbol}</span>
 					{/each}
+					{#if reasonByBar.has(offsets[s] + b)}
+						{@const barIndex = offsets[s] + b}
+						<button
+							type="button"
+							class="why"
+							title={reasonByBar.get(barIndex)}
+							aria-expanded={openReasonBar === barIndex}
+							onclick={() => (openReasonBar = openReasonBar === barIndex ? null : barIndex)}
+						>
+							Why?
+						</button>
+						{#if openReasonBar === barIndex}
+							<span class="reason" role="note">{reasonByBar.get(barIndex)}</span>
+						{/if}
+					{/if}
 					{#if flagged.has(offsets[s] + b)}
 						<span class="flag">
 							Review
@@ -172,6 +197,17 @@
 		grid-column: 1 / -1;
 		font-size: 0.75rem;
 		font-weight: 700;
+	}
+	.why {
+		grid-column: 1 / -1;
+		justify-self: start;
+		font-size: 0.75rem;
+	}
+	.reason {
+		grid-column: 1 / -1;
+		font-size: 0.8125rem;
+		font-weight: 400;
+		white-space: normal;
 	}
 	.legend {
 		display: flex;
