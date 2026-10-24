@@ -44,6 +44,10 @@ Tests exercise the server request handlers (`Request` to `Response`) against loc
 
 Single shared password. `POST /login/submit` compares it in constant time against the `APP_PASSWORD` secret, then sets a signed (`SESSION_KEY`), HttpOnly, Secure, SameSite=Lax cookie valid 180 days. Sessions are stored in D1 so logout revokes them. Five failed logins per client IP in 15 minutes locks that IP out for the rest of the window. Every route except `/login` and `/login/submit` requires a session; unauthenticated GETs redirect to `/login`, other methods get 401.
 
+## Tunes API
+
+JSON, session required. `GET/POST /api/tunes` (`?q=` title search), `GET/PATCH/DELETE /api/tunes/:id`, `PUT /api/tunes/:id/chart` (validated; 409 once Verified), `POST /api/tunes/:id/verify`. Errors are `{ "error": message }`. The Source Chart is stored as a validated JSON document on the tune (`src/lib/chart.ts`).
+
 ## Deploy
 
 CI (`.github/workflows/ci.yml`) runs typecheck, lint and tests on every PR. Merging to `main` runs `.github/workflows/deploy.yml`: CI, D1 migrations, then `wrangler deploy` with the app secrets.
