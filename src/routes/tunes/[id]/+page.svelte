@@ -7,6 +7,7 @@
 	import ChartGrid from '#lib/components/ChartGrid.svelte';
 	import ChartTabs from '#lib/components/ChartTabs.svelte';
 	import SimplifiedChartPanel from '#lib/components/SimplifiedChartPanel.svelte';
+	import ScanImport from '#lib/components/ScanImport.svelte';
 	import PracticeLog from '#lib/components/PracticeLog.svelte';
 	import type { Chart } from '#lib/chart.js';
 
@@ -21,6 +22,7 @@
 	let detailsError = $state<string | null>(null);
 	let chartError = $state<string | null>(null);
 	let saving = $state(false);
+	let replacing = $state(false);
 
 	function startEditingDetails() {
 		title = tune.title;
@@ -117,7 +119,10 @@
 
 {#snippet scanPages()}
 	{#each Array.from({ length: tune.scanPageCount }, (_, i) => i) as page (page)}
-		<img src={`/api/tunes/${tune.id}/scan/${page}`} alt={`Scan page ${page + 1}`} />
+		<img
+			src={`/api/tunes/${tune.id}/scan/${page}?v=${tune.scanVersion}`}
+			alt={`Scan page ${page + 1}`}
+		/>
 	{/each}
 {/snippet}
 
@@ -203,6 +208,13 @@
 	<PracticeLog {tune} sessions={data.sessions} />
 
 	<hr />
+	{#if replacing}
+		<h2>Replace Source Chart</h2>
+		<ScanImport replace={{ tuneId: tune.id, ondone: () => (replacing = false) }} />
+		<button type="button" onclick={() => (replacing = false)}>Cancel</button>
+	{:else}
+		<button type="button" onclick={() => (replacing = true)}>Replace Source Chart</button>
+	{/if}
 	<button type="button" onclick={remove}>Delete tune</button>
 </main>
 

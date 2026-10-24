@@ -203,9 +203,9 @@ export async function deleteTune(deps: Deps, id: string): Promise<Response> {
 	const [deleted] = await deps.db
 		.delete(tunes)
 		.where(eq(tunes.id, id))
-		.returning({ scanPageCount: tunes.scanPageCount });
+		.returning({ scanPageCount: tunes.scanPageCount, scanVersion: tunes.scanVersion });
 	if (!deleted) return tuneNotFound();
-	await deleteScanPages(deps, id, deleted.scanPageCount);
+	await deleteScanPages(deps, id, deleted.scanVersion, deleted.scanPageCount);
 	return new Response(null, { status: 204 });
 }
 
