@@ -9,6 +9,7 @@ export interface Deps {
 	scans: R2Bucket;
 	appPassword: string;
 	sessionKey: string;
+	timeZone: string;
 }
 
 export function createDeps(env: Cloudflare.Env, overrides: Partial<Deps> = {}): Deps {
@@ -19,6 +20,7 @@ export function createDeps(env: Cloudflare.Env, overrides: Partial<Deps> = {}): 
 		scans: env.SCANS,
 		appPassword: env.APP_PASSWORD,
 		sessionKey: env.SESSION_KEY,
+		timeZone: env.TIME_ZONE,
 		...overrides
 	};
 }

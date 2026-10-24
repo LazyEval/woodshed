@@ -1,9 +1,11 @@
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { SourceChartStatus } from '#lib/chart.js';
-import { emptyChart, isRecord, isValidKey, validateChart } from '#lib/chart.js';
+import { emptyChart, isValidKey, validateChart } from '#lib/chart.js';
 import type { Result } from '#lib/result.js';
 import type { Deps } from '#lib/server/deps.js';
 import { tunes } from '#lib/server/db/schema.js';
+import { jsonError, readBody } from '#lib/server/http.js';
+import { rotationOf } from '#lib/server/rotation.js';
 
 const MAX_TEXT_LENGTH = 200;
 
@@ -13,19 +15,7 @@ interface TuneFields {
 	key: string | null;
 }
 
-function jsonError(error: string, status: number): Response {
-	return Response.json({ error }, { status });
-}
-
 const notFound = () => jsonError('Tune not found.', 404);
-
-async function readJson(request: Request): Promise<unknown> {
-	try {
-		return await request.json();
-	} catch {
-		return undefined;
-	}
-}
 
 function optionalText(value: unknown, name: string): Result<string | null> {
 	if (value === undefined || value === null) return { value: null };
@@ -53,11 +43,6 @@ function parseFields(body: Record<string, unknown>): Result<TuneFields> {
 
 const VERIFIED_LOCKED = 'Source Chart is Verified and cannot be edited. Reopen it first.';
 
-async function readBody(request: Request): Promise<Result<Record<string, unknown>>> {
-	const body = await readJson(request);
-	return isRecord(body) ? { value: body } : { error: 'Request body must be a JSON object.' };
-}
-
 function findTune(deps: Deps, id: string) {
 	return deps.db.query.tunes.findFirst({ where: eq(tunes.id, id) });
 }
@@ -72,7 +57,8 @@ export async function listTunes(request: Request, deps: Deps): Promise<Response>
 			title: tunes.title,
 			composer: tunes.composer,
 			key: tunes.key,
-			sourceChartStatus: tunes.sourceChartStatus
+			sourceChartStatus: tunes.sourceChartStatus,
+			shelved: tunes.shelved
 		})
 		.from(tunes)
 		.where(pattern ? sql`${tunes.title} LIKE ${pattern} ESCAPE '\\'` : undefined)
@@ -102,7 +88,7 @@ export async function createTune(request: Request, deps: Deps): Promise<Response
 
 export async function getTune(deps: Deps, id: string): Promise<Response> {
 	const tune = await findTune(deps, id);
-	return tune ? Response.json(tune) : notFound();
+	return tune ? Response.json({ ...tune, ...(await rotationOf(deps, tune)) }) : notFound();
 }
 
 export async function updateTune(request: Request, deps: Deps, id: string): Promise<Response> {
@@ -147,9 +133,14 @@ async function setChartStatus(
 	id: string,
 	status: SourceChartStatus
 ): Promise<Response> {
+	const now = deps.clock.now().getTime();
 	const [changed] = await deps.db
 		.update(tunes)
-		.set({ sourceChartStatus: status, updatedAt: deps.clock.now().getTime() })
+		.set({
+			sourceChartStatus: status,
+			updatedAt: now,
+			...(status === 'verified' && { verifiedAt: sql`coalesce(${tunes.verifiedAt}, ${now})` })
+		})
 		.where(and(eq(tunes.id, id), ne(tunes.sourceChartStatus, status)))
 		.returning();
 	if (changed) return Response.json(changed);
