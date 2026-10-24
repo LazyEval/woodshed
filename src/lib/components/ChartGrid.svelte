@@ -1,10 +1,17 @@
 <script lang="ts">
-	import { effectiveTimeSignatures, keyCenterHue, keyCenterName, type Chart } from '#lib/chart.js';
+	import {
+		effectiveTimeSignatures,
+		keyCenterHue,
+		keyCenterName,
+		type BarReason,
+		type Chart
+	} from '#lib/chart.js';
 
 	interface Props {
 		chart: Chart;
 		highlightedBars?: number[];
 		flaggedBars?: number[];
+		reasons?: BarReason[];
 		onclearflag?: (bar: number) => void;
 		busy?: boolean;
 	}
@@ -13,12 +20,15 @@
 		chart,
 		highlightedBars = [],
 		flaggedBars = [],
+		reasons = [],
 		onclearflag,
 		busy = false
 	}: Props = $props();
 
 	const highlighted = $derived(new Set(highlightedBars));
 	const flagged = $derived(new Set(flaggedBars));
+	const reasonByBar = $derived(new Map(reasons.map(({ barIndex, reason }) => [barIndex, reason])));
+	let openReasonBar = $state<number | null>(null);
 
 	const signatures = $derived(effectiveTimeSignatures(chart));
 	const offsets = $derived(
@@ -72,16 +82,17 @@
 		<h3>{section.label}</h3>
 		<ol class="bars">
 			{#each section.bars as bar, b (b)}
-				{@const signature = signatures[offsets[s] + b]}
-				{@const keyCenter = keyCenterAt(offsets[s] + b + 1)}
+				{@const barIndex = offsets[s] + b}
+				{@const signature = signatures[barIndex]}
+				{@const keyCenter = keyCenterAt(barIndex + 1)}
 				<li
 					class="bar"
 					class:repeat-start={bar.repeatStart}
 					class:repeat-end={bar.repeatEnd}
 					class:ending={bar.ending}
 					class:key-centered={keyCenter}
-					class:differs={highlighted.has(offsets[s] + b)}
-					class:flagged={flagged.has(offsets[s] + b)}
+					class:differs={highlighted.has(barIndex)}
+					class:flagged={flagged.has(barIndex)}
 					class:under-first-ending={b in secondEndingColumns[s]}
 					style:--ending-column={secondEndingColumns[s][b]}
 					style:--hue={keyCenter && keyCenterHue(keyCenter)}
@@ -97,11 +108,25 @@
 					{#each bar.chords as chord (chord.beat)}
 						<span class="chord" style:grid-column={chord.beat}>{chord.symbol}</span>
 					{/each}
-					{#if flagged.has(offsets[s] + b)}
+					{#if reasonByBar.has(barIndex)}
+						<button
+							type="button"
+							class="why"
+							title={reasonByBar.get(barIndex)}
+							aria-expanded={openReasonBar === barIndex}
+							onclick={() => (openReasonBar = openReasonBar === barIndex ? null : barIndex)}
+						>
+							Why?
+						</button>
+						{#if openReasonBar === barIndex}
+							<span class="reason" role="note">{reasonByBar.get(barIndex)}</span>
+						{/if}
+					{/if}
+					{#if flagged.has(barIndex)}
 						<span class="flag">
 							Review
 							{#if onclearflag}
-								<button type="button" disabled={busy} onclick={() => onclearflag(offsets[s] + b)}>
+								<button type="button" disabled={busy} onclick={() => onclearflag(barIndex)}>
 									Clear flag
 								</button>
 							{/if}
@@ -172,6 +197,17 @@
 		grid-column: 1 / -1;
 		font-size: 0.75rem;
 		font-weight: 700;
+	}
+	.why {
+		grid-column: 1 / -1;
+		justify-self: start;
+		font-size: 0.75rem;
+	}
+	.reason {
+		grid-column: 1 / -1;
+		font-size: 0.8125rem;
+		font-weight: 400;
+		white-space: normal;
 	}
 	.legend {
 		display: flex;

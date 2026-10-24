@@ -57,6 +57,13 @@
       "when": 1792843557000,
       "tag": "0007_military_madame_web",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1792845475780,
+      "tag": "0008_chemical_blockbuster",
+      "breakpoints": true
     }
   ]
 }

@@ -1,24 +1,41 @@
 <script lang="ts">
 	import { ApiAction } from '#lib/api-action.svelte.js';
-	import type { TuneDetail } from '#lib/tune.js';
+	import GenerateForm from '#lib/components/GenerateForm.svelte';
+	import type { RuleView, TuneDetail } from '#lib/tune.js';
 
 	interface Props {
 		tune: TuneDetail;
+		rules: RuleView[];
 		selectedId: string | null;
 		locked: boolean;
 	}
 
-	let { tune, selectedId = $bindable(), locked }: Props = $props();
+	let { tune, rules, selectedId = $bindable(), locked }: Props = $props();
 
 	let creating = $state(false);
+	let generating = $state(false);
 	let name = $state('');
+	let knownIds = new Set<string>();
 	const action = new ApiAction();
+
+	function startGenerating() {
+		rememberCharts();
+		generating = true;
+	}
+
+	function rememberCharts() {
+		knownIds = new Set(tune.simplifiedCharts.map((chart) => chart.id));
+	}
+
+	function selectNewChart() {
+		selectedId = tune.simplifiedCharts.find((chart) => !knownIds.has(chart.id))?.id ?? null;
+	}
 
 	async function create(event: SubmitEvent) {
 		event.preventDefault();
-		const before = new Set(tune.simplifiedCharts.map((chart) => chart.id));
+		rememberCharts();
 		if (!(await action.run(`/api/tunes/${tune.id}/simplified-charts`, 'POST', { name }))) return;
-		selectedId = tune.simplifiedCharts.find((chart) => !before.has(chart.id))?.id ?? null;
+		selectNewChart();
 		creating = false;
 		name = '';
 	}
@@ -41,10 +58,11 @@
 			onclick={() => (selectedId = chart.id)}>{chart.name}</button
 		>
 	{/each}
-	{#if tune.sourceChartStatus === 'verified' && !creating}
+	{#if tune.sourceChartStatus === 'verified' && !creating && !generating}
 		<button type="button" disabled={locked} onclick={() => (creating = true)}>
 			+ Simplified Chart
 		</button>
+		<button type="button" disabled={locked} onclick={startGenerating}>Generate</button>
 	{/if}
 </div>
 
@@ -54,6 +72,17 @@
 		<button type="submit" disabled={action.busy}>Create</button>
 		<button type="button" onclick={() => (creating = false)}>Cancel</button>
 	</form>
+{/if}
+{#if generating}
+	<GenerateForm
+		tuneId={tune.id}
+		{rules}
+		ondone={() => {
+			generating = false;
+			selectNewChart();
+		}}
+		oncancel={() => (generating = false)}
+	/>
 {/if}
 {#if action.error}<p role="alert">{action.error}</p>{/if}
 

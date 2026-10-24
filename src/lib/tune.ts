@@ -1,4 +1,10 @@
-import type { Chart, SimplifiedChartOrigin, SourceChartStatus } from '#lib/chart.js';
+import type {
+	Chart,
+	GenerationRecord,
+	RuleSnapshot,
+	SimplifiedChartOrigin,
+	SourceChartStatus
+} from '#lib/chart.js';
 import type { Schedule } from '#lib/rotation.js';
 
 export interface TuneSummary {
@@ -15,6 +21,7 @@ export interface SimplifiedChartView {
 	name: string;
 	origin: SimplifiedChartOrigin;
 	chart: Chart;
+	generation: GenerationRecord | null;
 	flaggedBars: number[];
 	archivedAt: number | null;
 }
@@ -31,3 +38,7 @@ export const isArchived = (chart: Pick<SimplifiedChartView, 'archivedAt'>) =>
 	chart.archivedAt !== null;
 
 export const CONFIRM_ARCHIVE = { name: 'confirmArchive', value: 'true' } as const;
+
+export interface RuleView extends RuleSnapshot {
+	id: string;
+}
