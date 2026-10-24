@@ -60,7 +60,7 @@ interface DueJson {
 	id: string;
 	title: string;
 	dueOn: string;
-	daysOverdue: number;
+	dueForDays: number;
 	lastPracticedOn: string | null;
 	lastRating: string | null;
 }
@@ -273,7 +273,7 @@ describe('due list', () => {
 				composer: null,
 				key: null,
 				dueOn: '2026-01-01',
-				daysOverdue: 0,
+				dueForDays: 0,
 				lastPracticedOn: null,
 				lastRating: null
 			}
@@ -287,6 +287,23 @@ describe('due list', () => {
 		expect(await dueList(app)).toEqual([]);
 	});
 
+	it('gives a practiced tune no Due date until its Source Chart is Verified', async () => {
+		const app = createTestApp();
+		const created = await createTune(
+			jsonRequest('/api/tunes', 'POST', { title: 'Draft Blues' }),
+			app.deps
+		);
+		const { id } = (await created.json()) as { id: string };
+
+		await log(app, id, { rating: 'shaky', practicedOn: '2025-12-01' });
+
+		expect(await rotationOf(app, id)).toMatchObject({
+			lastPracticedOn: '2025-12-01',
+			dueOn: null
+		});
+		expect(await dueList(app)).toEqual([]);
+	});
+
 	it('keeps a reopened tune in rotation, Due from its first verification', async () => {
 		const app = createTestApp();
 		const id = await verifiedTune(app);
@@ -294,7 +311,7 @@ describe('due list', () => {
 		await reopenSourceChart(app.deps, id);
 		await markChartVerified(app.deps, id);
 
-		expect(await dueList(app)).toMatchObject([{ id, dueOn: '2026-01-01', daysOverdue: 5 }]);
+		expect(await dueList(app)).toMatchObject([{ id, dueOn: '2026-01-01', dueForDays: 5 }]);
 	});
 
 	it('drops a practiced tune until its next Due date arrives', async () => {
@@ -311,7 +328,7 @@ describe('due list', () => {
 		expect(justPracticed).toEqual([]);
 		expect(dayBefore).toEqual([]);
 		expect(dueDay).toMatchObject([
-			{ id, dueOn: '2026-01-04', daysOverdue: 0, lastPracticedOn: '2026-01-01', lastRating: 'ok' }
+			{ id, dueOn: '2026-01-04', dueForDays: 0, lastPracticedOn: '2026-01-01', lastRating: 'ok' }
 		]);
 	});
 
@@ -328,9 +345,9 @@ describe('due list', () => {
 
 		expect(due).toHaveLength(29);
 		expect(due.slice(0, 3)).toMatchObject([
-			{ title: 'Tune 00', daysOverdue: 30 },
-			{ title: 'Tune 01', daysOverdue: 11 },
-			{ title: 'Tune 03', daysOverdue: 0 }
+			{ title: 'Tune 00', dueForDays: 30 },
+			{ title: 'Tune 01', dueForDays: 11 },
+			{ title: 'Tune 03', dueForDays: 0 }
 		]);
 		expect(due.at(-1)).toMatchObject({ title: 'Tune 29' });
 	});
@@ -377,7 +394,20 @@ describe('shelving', () => {
 
 		expect(response.status).toBe(200);
 		expect(await rotationOf(app, id)).toMatchObject({ shelved: false, dueOn: '2026-01-08' });
-		expect(await dueList(app)).toMatchObject([{ id, daysOverdue: 3 }]);
+		expect(await dueList(app)).toMatchObject([{ id, dueForDays: 3 }]);
+	});
+
+	it('reports no Due date while Shelved', async () => {
+		const app = createTestApp();
+		const id = await verifiedTune(app);
+		await log(app, id, { rating: 'ok' });
+
+		await shelveTune(app.deps, id);
+
+		expect(await rotationOf(app, id)).toMatchObject({
+			lastPracticedOn: '2026-01-01',
+			dueOn: null
+		});
 	});
 
 	it('404s when shelving or un-shelving an unknown tune', async () => {

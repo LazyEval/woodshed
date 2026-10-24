@@ -9,4 +9,4 @@ Sessions and Due dates are calendar dates (`YYYY-MM-DD`), not instants, because 
 - Nothing in SQL can filter by Due date; the Due list loads all Active Tunes and their sessions.
 - If history grows large enough to matter, cache the replayed state on the Tune and invalidate it on session writes.
 - Changing `TIME_ZONE` can shift "today" by a day; stored dates are unaffected.
-- Reopening a Verified Source Chart keeps the Tune in rotation; it is Due from its first verification.
+- A Tune is in rotation once first Verified and while not Shelved; otherwise it has no Due date, though its sessions are kept. Reopening a Verified Source Chart keeps it in rotation, Due from its first verification.

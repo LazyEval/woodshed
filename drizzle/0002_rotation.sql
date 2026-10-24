@@ -10,5 +10,4 @@ CREATE TABLE `practice_sessions` (
 --> statement-breakpoint
 CREATE INDEX `practice_sessions_tune_idx` ON `practice_sessions` (`tune_id`,`practiced_on`);--> statement-breakpoint
 ALTER TABLE `tunes` ADD `verified_at` integer;--> statement-breakpoint
-ALTER TABLE `tunes` ADD `shelved` integer DEFAULT false NOT NULL;--> statement-breakpoint
-UPDATE `tunes` SET `verified_at` = `updated_at` WHERE `source_chart_status` = 'verified';
+ALTER TABLE `tunes` ADD `shelved` integer DEFAULT false NOT NULL;

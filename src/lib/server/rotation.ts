@@ -1,18 +1,19 @@
-import { and, asc, desc, eq, isNotNull } from 'drizzle-orm';
+import { and, asc, eq, isNotNull } from 'drizzle-orm';
 import type { Result } from '#lib/result.js';
 import {
 	calendarDateIn,
 	daysBetween,
 	isCalendarDate,
 	isRating,
-	rotation,
+	schedule,
 	type CalendarDate,
+	type DueTune,
 	type Rating,
-	type Rotation
+	type RotationStanding
 } from '#lib/rotation.js';
 import type { Deps } from '#lib/server/deps.js';
 import { practiceSessions, tunes } from '#lib/server/db/schema.js';
-import { jsonError, readBody } from '#lib/server/http.js';
+import { jsonError, readBody, tuneNotFound } from '#lib/server/http.js';
 
 const MAX_CHART_NAME_LENGTH = 200;
 
@@ -24,7 +25,7 @@ interface NewPracticeSession {
 
 type TuneRow = typeof tunes.$inferSelect;
 
-const tuneNotFound = () => jsonError('Tune not found.', 404);
+const practiceOrder = [asc(practiceSessions.practicedOn), asc(practiceSessions.createdAt)];
 
 async function tuneExists(deps: Deps, tuneId: string): Promise<boolean> {
 	const [found] = await deps.db.select({ id: tunes.id }).from(tunes).where(eq(tunes.id, tuneId));
@@ -33,12 +34,15 @@ async function tuneExists(deps: Deps, tuneId: string): Promise<boolean> {
 
 const today = (deps: Deps) => calendarDateIn(deps.clock.now(), deps.timeZone);
 
-function parseSession(body: Record<string, unknown>, deps: Deps): Result<NewPracticeSession> {
+function parseSession(
+	body: Record<string, unknown>,
+	today: CalendarDate
+): Result<NewPracticeSession> {
 	if (!isRating(body.rating)) return { error: 'Rating must be shaky, ok or solid.' };
 
-	const practicedOn = body.practicedOn ?? today(deps);
+	const practicedOn = body.practicedOn ?? today;
 	if (!isCalendarDate(practicedOn)) return { error: 'Date must be a valid YYYY-MM-DD date.' };
-	if (practicedOn > today(deps)) return { error: 'Date cannot be in the future.' };
+	if (practicedOn > today) return { error: 'Date cannot be in the future.' };
 
 	const chart = body.chart ?? null;
 	if (chart !== null && typeof chart !== 'string') return { error: 'Chart must be text.' };
@@ -52,15 +56,19 @@ function sessionsOf(deps: Deps, tuneId: string) {
 		.select()
 		.from(practiceSessions)
 		.where(eq(practiceSessions.tuneId, tuneId))
-		.orderBy(asc(practiceSessions.practicedOn), asc(practiceSessions.createdAt));
+		.orderBy(...practiceOrder);
 }
 
-function verifiedOn(deps: Deps, verifiedAt: number | null): CalendarDate | null {
-	return verifiedAt === null ? null : calendarDateIn(new Date(verifiedAt), deps.timeZone);
+function standingOf(deps: Deps, tune: Pick<TuneRow, 'verifiedAt' | 'shelved'>): RotationStanding {
+	return {
+		verifiedOn:
+			tune.verifiedAt === null ? null : calendarDateIn(new Date(tune.verifiedAt), deps.timeZone),
+		shelved: tune.shelved
+	};
 }
 
-export async function rotationOf(deps: Deps, tune: TuneRow): Promise<Rotation> {
-	return rotation(await sessionsOf(deps, tune.id), verifiedOn(deps, tune.verifiedAt));
+export async function tuneDetail(deps: Deps, tune: TuneRow) {
+	return { ...tune, ...schedule(await sessionsOf(deps, tune.id), standingOf(deps, tune)) };
 }
 
 export async function listDueTunes(deps: Deps): Promise<Response> {
@@ -72,7 +80,8 @@ export async function listDueTunes(deps: Deps): Promise<Response> {
 				title: tunes.title,
 				composer: tunes.composer,
 				key: tunes.key,
-				verifiedAt: tunes.verifiedAt
+				verifiedAt: tunes.verifiedAt,
+				shelved: tunes.shelved
 			})
 			.from(tunes)
 			.where(inRotation),
@@ -85,19 +94,20 @@ export async function listDueTunes(deps: Deps): Promise<Response> {
 			.from(practiceSessions)
 			.innerJoin(tunes, eq(practiceSessions.tuneId, tunes.id))
 			.where(inRotation)
-			.orderBy(asc(practiceSessions.practicedOn), asc(practiceSessions.createdAt))
+			.orderBy(...practiceOrder)
 	]);
 
 	const sessionsByTune = Map.groupBy(sessions, (session) => session.tuneId);
 	const now = today(deps);
-	const due = rotating.flatMap(({ verifiedAt, ...tune }) => {
-		const schedule = rotation(sessionsByTune.get(tune.id) ?? [], verifiedOn(deps, verifiedAt));
-		if (schedule.dueOn === null || schedule.dueOn > now) return [];
-		return [
-			{ ...tune, ...schedule, dueOn: schedule.dueOn, daysOverdue: daysBetween(schedule.dueOn, now) }
-		];
+	const due = rotating.flatMap(({ verifiedAt, shelved, ...tune }): DueTune[] => {
+		const { dueOn, ...last } = schedule(
+			sessionsByTune.get(tune.id) ?? [],
+			standingOf(deps, { verifiedAt, shelved })
+		);
+		if (dueOn === null || dueOn > now) return [];
+		return [{ ...tune, ...last, dueOn, dueForDays: daysBetween(dueOn, now) }];
 	});
-	due.sort((a, b) => b.daysOverdue - a.daysOverdue || a.title.localeCompare(b.title));
+	due.sort((a, b) => b.dueForDays - a.dueForDays || a.title.localeCompare(b.title));
 	return Response.json(due);
 }
 
@@ -108,7 +118,7 @@ export async function logPracticeSession(
 ): Promise<Response> {
 	const body = await readBody(request);
 	if ('error' in body) return jsonError(body.error, 400);
-	const fields = parseSession(body.value, deps);
+	const fields = parseSession(body.value, today(deps));
 	if ('error' in fields) return jsonError(fields.error, 400);
 	if (!(await tuneExists(deps, tuneId))) return tuneNotFound();
 
@@ -126,12 +136,7 @@ export async function logPracticeSession(
 
 export async function listPracticeSessions(deps: Deps, tuneId: string): Promise<Response> {
 	if (!(await tuneExists(deps, tuneId))) return tuneNotFound();
-	const sessions = await deps.db
-		.select()
-		.from(practiceSessions)
-		.where(eq(practiceSessions.tuneId, tuneId))
-		.orderBy(desc(practiceSessions.practicedOn), desc(practiceSessions.createdAt));
-	return Response.json(sessions);
+	return Response.json((await sessionsOf(deps, tuneId)).toReversed());
 }
 
 export async function deletePracticeSession(
@@ -154,7 +159,7 @@ async function setShelved(deps: Deps, tuneId: string, shelved: boolean): Promise
 		.set({ shelved, updatedAt: deps.clock.now().getTime() })
 		.where(eq(tunes.id, tuneId))
 		.returning();
-	return tune ? Response.json({ ...tune, ...(await rotationOf(deps, tune)) }) : tuneNotFound();
+	return tune ? Response.json(await tuneDetail(deps, tune)) : tuneNotFound();
 }
 
 export const shelveTune = (deps: Deps, tuneId: string) => setShelved(deps, tuneId, true);

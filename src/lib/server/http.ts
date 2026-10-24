@@ -5,6 +5,8 @@ export function jsonError(error: string, status: number): Response {
 	return Response.json({ error }, { status });
 }
 
+export const tuneNotFound = () => jsonError('Tune not found.', 404);
+
 async function readJson(request: Request): Promise<unknown> {
 	try {
 		return await request.json();

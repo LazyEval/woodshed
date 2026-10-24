@@ -1,3 +1,5 @@
+import type { TuneSummary } from '#lib/tune.js';
+
 export type Rating = 'shaky' | 'ok' | 'solid';
 export const RATINGS: readonly Rating[] = ['shaky', 'ok', 'solid'];
 
@@ -17,10 +19,15 @@ export interface RatedSession {
 	rating: Rating;
 }
 
-export interface Rotation {
+export interface Schedule {
 	lastPracticedOn: CalendarDate | null;
 	lastRating: Rating | null;
 	dueOn: CalendarDate | null;
+}
+
+export interface RotationStanding {
+	verifiedOn: CalendarDate | null;
+	shelved: boolean;
 }
 
 export interface PracticeSession {
@@ -30,14 +37,11 @@ export interface PracticeSession {
 	chart: string | null;
 }
 
-export interface DueTune extends Rotation {
-	id: string;
-	title: string;
-	composer: string | null;
-	key: string | null;
-	dueOn: CalendarDate;
-	daysOverdue: number;
-}
+export type DueTune = Pick<TuneSummary, 'id' | 'title' | 'composer' | 'key'> &
+	Schedule & {
+		dueOn: CalendarDate;
+		dueForDays: number;
+	};
 
 export function isRating(value: unknown): value is Rating {
 	return RATINGS.includes(value as Rating);
@@ -79,11 +83,7 @@ export function calendarDateIn(instant: Date, timeZone: string): CalendarDate {
 	return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
-/** Sessions must be in practice order, oldest first. */
-export function rotation(sessions: RatedSession[], verifiedOn: CalendarDate | null): Rotation {
-	const last = sessions.at(-1);
-	if (!last) return { lastPracticedOn: null, lastRating: null, dueOn: verifiedOn };
-
+function nextDueOn(sessions: RatedSession[]): CalendarDate {
 	let interval = FIRST_INTERVAL_DAYS[sessions[0].rating];
 	let ease = STARTING_EASE;
 	for (const { rating } of sessions.slice(1)) {
@@ -94,10 +94,16 @@ export function rotation(sessions: RatedSession[], verifiedOn: CalendarDate | nu
 			interval *= rating === 'ok' ? OK_GROWTH : ease;
 		}
 	}
+	return addDays(sessions.at(-1)!.practicedOn, Math.round(interval));
+}
 
+/** Sessions must be in practice order, oldest first. */
+export function schedule(sessions: RatedSession[], standing: RotationStanding): Schedule {
+	const last = sessions.at(-1);
+	const inRotation = standing.verifiedOn !== null && !standing.shelved;
 	return {
-		lastPracticedOn: last.practicedOn,
-		lastRating: last.rating,
-		dueOn: addDays(last.practicedOn, Math.round(interval))
+		lastPracticedOn: last?.practicedOn ?? null,
+		lastRating: last?.rating ?? null,
+		dueOn: !inRotation ? null : last ? nextDueOn(sessions) : standing.verifiedOn
 	};
 }

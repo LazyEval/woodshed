@@ -1,5 +1,5 @@
 import type { Chart, SourceChartStatus } from '#lib/chart.js';
-import type { Rotation } from '#lib/rotation.js';
+import type { Schedule } from '#lib/rotation.js';
 
 export interface TuneSummary {
 	id: string;
@@ -10,7 +10,7 @@ export interface TuneSummary {
 	shelved: boolean;
 }
 
-export interface TuneDetail extends TuneSummary, Rotation {
+export interface TuneDetail extends TuneSummary, Schedule {
 	sourceChart: Chart;
 	verifiedAt: number | null;
 }

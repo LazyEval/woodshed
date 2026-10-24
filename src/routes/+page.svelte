@@ -22,9 +22,9 @@
 		await invalidateAll();
 	}
 
-	function overdueLabel(days: number): string {
+	function dueLabel(days: number): string {
 		if (days === 0) return 'Due today';
-		return `${days} day${days === 1 ? '' : 's'} overdue`;
+		return `Due for ${days} day${days === 1 ? '' : 's'}`;
 	}
 </script>
 
@@ -47,7 +47,7 @@
 					<div>
 						<a href={resolve('/tunes/[id]', { id: tune.id })}>{tune.title}</a>
 						<small>
-							{overdueLabel(tune.daysOverdue)}
+							{dueLabel(tune.dueForDays)}
 							{#if tune.lastPracticedOn}· last {tune.lastRating} on {tune.lastPracticedOn}{/if}
 						</small>
 					</div>
