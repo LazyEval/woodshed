@@ -48,6 +48,8 @@ Single shared password. `POST /login/submit` compares it in constant time agains
 
 JSON, session required. `GET/POST /api/tunes` (`?q=` title search), `GET/PATCH/DELETE /api/tunes/:id`, `PUT /api/tunes/:id/chart` (validated; 409 once Verified), `POST /api/tunes/:id/verify` and `/reopen`. `POST /api/tunes/import` (multipart: `pages` images in order, optional `model=opus`, or `mode=manual` + `title` to keep the Scan and build the grid by hand) extracts a Draft Source Chart from a Scan with Claude (output validated, retried once) and creates the Tune only on success. `POST /api/tunes/:id/extract` (`{ model }`) re-extracts a Draft from the stored Scan; `GET /api/tunes/:id/scan/:page` serves a page. Errors are `{ "error": message }`. The Source Chart is stored as a validated JSON document on the tune (`src/lib/chart.ts`).
 
+Rotation: `GET/POST /api/tunes/:id/sessions` (`{ rating, practicedOn?, chart? }`, date defaults to today, `chart` is `"source"` or omitted), `DELETE /api/tunes/:id/sessions/:sessionId`, `POST /api/tunes/:id/shelve` and `/unshelve`, `GET /api/due`. `GET /api/tunes/:id` includes `lastPracticedOn`, `lastRating` and `dueOn`. The schedule is replayed from the Practice Sessions on every read (`src/lib/rotation.ts`). Dates are calendar dates in the `TIME_ZONE` var in `wrangler.jsonc` (IANA name, e.g. `Europe/Rome`).
+
 ## Deploy
 
 CI (`.github/workflows/ci.yml`) runs typecheck, lint and tests on every PR. Merging to `main` runs `.github/workflows/deploy.yml`: CI, D1 migrations, then `wrangler deploy` with the app secrets.

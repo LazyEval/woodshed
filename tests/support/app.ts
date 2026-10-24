@@ -12,7 +12,7 @@ export interface TestApp {
 export function createTestApp(overrides: Partial<Deps> = {}): TestApp {
 	const clock = fakeClock();
 	const ai = new FakeAiClient();
-	return { deps: createDeps(env, { clock, ai, ...overrides }), clock, ai };
+	return { deps: createDeps(env, { clock, ai, timeZone: 'UTC', ...overrides }), clock, ai };
 }
 
 export const APP_PASSWORD = env.APP_PASSWORD;

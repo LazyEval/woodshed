@@ -1,10 +1,12 @@
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { SourceChartStatus } from '#lib/chart.js';
-import { emptyChart, isRecord, isValidKey, validateChart } from '#lib/chart.js';
+import { emptyChart, isValidKey, validateChart } from '#lib/chart.js';
 import type { Result } from '#lib/result.js';
 import type { Deps } from '#lib/server/deps.js';
 import { tunes } from '#lib/server/db/schema.js';
 import { deleteScanPages } from '#lib/server/scans.js';
+import { jsonError, readBody, tuneNotFound } from '#lib/server/http.js';
+import { tuneDetail } from '#lib/server/rotation.js';
 
 const MAX_TEXT_LENGTH = 200;
 
@@ -12,20 +14,6 @@ interface TuneFields {
 	title: string;
 	composer: string | null;
 	key: string | null;
-}
-
-function jsonError(error: string, status: number): Response {
-	return Response.json({ error }, { status });
-}
-
-const notFound = () => jsonError('Tune not found.', 404);
-
-async function readJson(request: Request): Promise<unknown> {
-	try {
-		return await request.json();
-	} catch {
-		return undefined;
-	}
 }
 
 function optionalText(value: unknown, name: string): Result<string | null> {
@@ -54,11 +42,6 @@ function parseFields(body: Record<string, unknown>): Result<TuneFields> {
 
 const VERIFIED_LOCKED = 'Source Chart is Verified and cannot be edited. Reopen it first.';
 
-async function readBody(request: Request): Promise<Result<Record<string, unknown>>> {
-	const body = await readJson(request);
-	return isRecord(body) ? { value: body } : { error: 'Request body must be a JSON object.' };
-}
-
 function findTune(deps: Deps, id: string) {
 	return deps.db.query.tunes.findFirst({ where: eq(tunes.id, id) });
 }
@@ -73,7 +56,8 @@ export async function listTunes(request: Request, deps: Deps): Promise<Response>
 			title: tunes.title,
 			composer: tunes.composer,
 			key: tunes.key,
-			sourceChartStatus: tunes.sourceChartStatus
+			sourceChartStatus: tunes.sourceChartStatus,
+			shelved: tunes.shelved
 		})
 		.from(tunes)
 		.where(pattern ? sql`${tunes.title} LIKE ${pattern} ESCAPE '\\'` : undefined)
@@ -103,14 +87,14 @@ export async function createTune(request: Request, deps: Deps): Promise<Response
 
 export async function getTune(deps: Deps, id: string): Promise<Response> {
 	const tune = await findTune(deps, id);
-	return tune ? Response.json(tune) : notFound();
+	return tune ? Response.json(await tuneDetail(deps, tune)) : tuneNotFound();
 }
 
 export async function updateTune(request: Request, deps: Deps, id: string): Promise<Response> {
 	const body = await readBody(request);
 	if ('error' in body) return jsonError(body.error, 400);
 	const existing = await findTune(deps, id);
-	if (!existing) return notFound();
+	if (!existing) return tuneNotFound();
 
 	const fields = parseFields({ ...existing, ...body.value });
 	if ('error' in fields) return jsonError(fields.error, 400);
@@ -127,7 +111,7 @@ export async function saveSourceChart(request: Request, deps: Deps, id: string):
 	const body = await readBody(request);
 	if ('error' in body) return jsonError(body.error, 400);
 	const tune = await findTune(deps, id);
-	if (!tune) return notFound();
+	if (!tune) return tuneNotFound();
 	if (tune.sourceChartStatus === 'verified') {
 		return jsonError(VERIFIED_LOCKED, 409);
 	}
@@ -148,15 +132,20 @@ async function setChartStatus(
 	id: string,
 	status: SourceChartStatus
 ): Promise<Response> {
+	const now = deps.clock.now().getTime();
 	const [changed] = await deps.db
 		.update(tunes)
-		.set({ sourceChartStatus: status, updatedAt: deps.clock.now().getTime() })
+		.set({
+			sourceChartStatus: status,
+			updatedAt: now,
+			...(status === 'verified' && { verifiedAt: sql`coalesce(${tunes.verifiedAt}, ${now})` })
+		})
 		.where(and(eq(tunes.id, id), ne(tunes.sourceChartStatus, status)))
 		.returning();
 	if (changed) return Response.json(changed);
 
 	const unchanged = await findTune(deps, id);
-	return unchanged ? Response.json(unchanged) : notFound();
+	return unchanged ? Response.json(unchanged) : tuneNotFound();
 }
 
 export const markChartVerified = (deps: Deps, id: string) => setChartStatus(deps, id, 'verified');
@@ -168,7 +157,7 @@ export async function deleteTune(deps: Deps, id: string): Promise<Response> {
 		.delete(tunes)
 		.where(eq(tunes.id, id))
 		.returning({ scanPageCount: tunes.scanPageCount });
-	if (!deleted) return notFound();
+	if (!deleted) return tuneNotFound();
 	await deleteScanPages(deps, id, deleted.scanPageCount);
 	return new Response(null, { status: 204 });
 }

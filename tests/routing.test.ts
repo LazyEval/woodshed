@@ -57,6 +57,39 @@ describe('routing through the built worker', () => {
 		expect(await page.text()).toContain('Routing Blues');
 	});
 
+	it('routes Practice Sessions and the Due list through the guard to the handlers', async () => {
+		const login = await SELF.fetch('https://woodshed.test/login/submit', {
+			method: 'POST',
+			headers: browserHeaders,
+			body: new URLSearchParams({ password: APP_PASSWORD }),
+			redirect: 'manual'
+		});
+		const cookie = login.headers.get('set-cookie')!.split(';')[0];
+		const api = { cookie, 'content-type': 'application/json', origin: 'https://woodshed.test' };
+		const created = await SELF.fetch('https://woodshed.test/api/tunes', {
+			method: 'POST',
+			headers: api,
+			body: JSON.stringify({ title: 'Rotation Waltz' })
+		});
+		const { id } = (await created.json()) as { id: string };
+		await SELF.fetch(`https://woodshed.test/api/tunes/${id}/verify`, {
+			method: 'POST',
+			headers: api
+		});
+
+		const home = await SELF.fetch('https://woodshed.test/', {
+			headers: { cookie, accept: 'text/html' }
+		});
+		const logged = await SELF.fetch(`https://woodshed.test/api/tunes/${id}/sessions`, {
+			method: 'POST',
+			headers: api,
+			body: JSON.stringify({ rating: 'solid' })
+		});
+
+		expect(await home.text()).toContain('Rotation Waltz');
+		expect(logged.status).toBe(201);
+	});
+
 	it('routes a multipart Scan import to the import handler', async () => {
 		const login = await SELF.fetch('https://woodshed.test/login/submit', {
 			method: 'POST',

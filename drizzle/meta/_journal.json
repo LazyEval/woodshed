@@ -19,8 +19,22 @@
     {
       "idx": 2,
       "version": "6",
-      "when": 1792829455413,
-      "tag": "0002_wild_triton",
+      "when": 1792826943418,
+      "tag": "0002_rotation",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792827998744,
+      "tag": "0003_backfill_verified_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792834052019,
+      "tag": "0004_adorable_nuke",
       "breakpoints": true
     }
   ]

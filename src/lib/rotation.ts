@@ -1,0 +1,116 @@
+import type { TuneSummary } from '#lib/tune.js';
+
+export type Rating = 'shaky' | 'ok' | 'solid';
+export const RATINGS: readonly Rating[] = ['shaky', 'ok', 'solid'];
+
+export type PracticedChart = 'source';
+export const PRACTICED_CHARTS: readonly PracticedChart[] = ['source'];
+
+export type CalendarDate = string & { readonly __brand: 'CalendarDate' };
+
+const FIRST_INTERVAL_DAYS: Record<Rating, number> = { shaky: 1, ok: 3, solid: 7 };
+const OK_GROWTH = 1.5;
+const STARTING_EASE = 2.5;
+const SHAKY_EASE_PENALTY = 0.2;
+const MIN_EASE = 1.3;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const CALENDAR_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+export interface RatedSession {
+	practicedOn: CalendarDate;
+	rating: Rating;
+}
+
+export interface Schedule {
+	lastPracticedOn: CalendarDate | null;
+	lastRating: Rating | null;
+	dueOn: CalendarDate | null;
+}
+
+export interface RotationStanding {
+	verifiedOn: CalendarDate | null;
+	shelved: boolean;
+}
+
+export interface PracticeSession {
+	id: string;
+	practicedOn: CalendarDate;
+	rating: Rating;
+	chart: PracticedChart | null;
+}
+
+export type DueTune = Pick<TuneSummary, 'id' | 'title' | 'composer' | 'key'> &
+	Schedule & {
+		dueOn: CalendarDate;
+		dueForDays: number;
+	};
+
+export function isPracticedChart(value: unknown): value is PracticedChart {
+	return PRACTICED_CHARTS.includes(value as PracticedChart);
+}
+
+export function isRating(value: unknown): value is Rating {
+	return RATINGS.includes(value as Rating);
+}
+
+function toUtcMs(date: string): number {
+	const [, year, month, day] = CALENDAR_DATE_PATTERN.exec(date)!;
+	return Date.UTC(Number(year), Number(month) - 1, Number(day));
+}
+
+function fromUtcMs(ms: number): CalendarDate {
+	return new Date(ms).toISOString().slice(0, 10) as CalendarDate;
+}
+
+export function isCalendarDate(value: unknown): value is CalendarDate {
+	return (
+		typeof value === 'string' &&
+		CALENDAR_DATE_PATTERN.test(value) &&
+		fromUtcMs(toUtcMs(value)) === value
+	);
+}
+
+export function addDays(date: CalendarDate, days: number): CalendarDate {
+	return fromUtcMs(toUtcMs(date) + days * DAY_MS);
+}
+
+export function daysBetween(from: CalendarDate, to: CalendarDate): number {
+	return Math.round((toUtcMs(to) - toUtcMs(from)) / DAY_MS);
+}
+
+export function calendarDateIn(instant: Date, timeZone: string): CalendarDate {
+	const parts = new Intl.DateTimeFormat('en-US', {
+		timeZone,
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit'
+	}).formatToParts(instant);
+	const part = (type: string) => parts.find((p) => p.type === type)!.value;
+	return `${part('year')}-${part('month')}-${part('day')}` as CalendarDate;
+}
+
+function nextDueOn(sessions: RatedSession[]): CalendarDate {
+	let interval = FIRST_INTERVAL_DAYS[sessions[0].rating];
+	let ease = STARTING_EASE;
+	for (const { rating } of sessions.slice(1)) {
+		if (rating === 'shaky') {
+			interval = 1;
+			ease = Math.max(MIN_EASE, ease - SHAKY_EASE_PENALTY);
+		} else {
+			interval *= rating === 'ok' ? OK_GROWTH : ease;
+		}
+	}
+	return addDays(sessions.at(-1)!.practicedOn, Math.round(interval));
+}
+
+/** Sessions must be in practice order, oldest first. */
+export function schedule(sessions: RatedSession[], standing: RotationStanding): Schedule {
+	const last = sessions.at(-1);
+	const inRotation = standing.verifiedOn !== null && !standing.shelved;
+	return {
+		lastPracticedOn: last?.practicedOn ?? null,
+		lastRating: last?.rating ?? null,
+		dueOn: !inRotation ? null : last ? nextDueOn(sessions) : standing.verifiedOn
+	};
+}

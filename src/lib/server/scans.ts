@@ -4,6 +4,7 @@ import type { Result } from '#lib/result.js';
 import type { ExtractionModel, ScanImage } from '#lib/server/ai.js';
 import type { Deps } from '#lib/server/deps.js';
 import { tunes } from '#lib/server/db/schema.js';
+import { jsonError, tuneNotFound } from '#lib/server/http.js';
 
 export const MAX_SCAN_PAGES = 12;
 export const MAX_PAGE_BYTES = 5 * 1024 * 1024;
@@ -20,10 +21,6 @@ interface Extracted {
 }
 
 type Extraction = { value: Extracted } | { failure: Response };
-
-function jsonError(error: string, status: number): Response {
-	return Response.json({ error }, { status });
-}
 
 const scanKey = (tuneId: string, page: number) => `scans/${tuneId}/${page}`;
 
@@ -189,7 +186,7 @@ export async function reextractChart(request: Request, deps: Deps, id: string): 
 	if (!model) return jsonError('Model must be sonnet or opus.', 400);
 
 	const tune = await deps.db.query.tunes.findFirst({ where: eq(tunes.id, id) });
-	if (!tune) return jsonError('Tune not found.', 404);
+	if (!tune) return tuneNotFound();
 	if (tune.sourceChartStatus === 'verified') {
 		return jsonError(VERIFIED_LOCKED, 409);
 	}

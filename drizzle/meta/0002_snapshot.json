@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "771b9e2c-e08e-42f8-96d1-b1d549f2ead4",
+  "id": "ca4389e4-0253-4c18-9ca4-b58576e04548",
   "prevId": "309c8f76-d41e-410a-b4db-12cb29e6dfcd",
   "tables": {
     "login_failures": {
@@ -31,6 +31,81 @@
       },
       "indexes": {},
       "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "practice_sessions": {
+      "name": "practice_sessions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tune_id": {
+          "name": "tune_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "practiced_on": {
+          "name": "practiced_on",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "rating": {
+          "name": "rating",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "chart": {
+          "name": "chart",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "practice_sessions_tune_idx": {
+          "name": "practice_sessions_tune_idx",
+          "columns": [
+            "tune_id",
+            "practiced_on"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "practice_sessions_tune_id_tunes_id_fk": {
+          "name": "practice_sessions_tune_id_tunes_id_fk",
+          "tableFrom": "practice_sessions",
+          "tableTo": "tunes",
+          "columnsFrom": [
+            "tune_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -105,13 +180,20 @@
           "autoincrement": false,
           "default": "'draft'"
         },
-        "scan_page_count": {
-          "name": "scan_page_count",
+        "verified_at": {
+          "name": "verified_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "shelved": {
+          "name": "shelved",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": false
         },
         "created_at": {
           "name": "created_at",
