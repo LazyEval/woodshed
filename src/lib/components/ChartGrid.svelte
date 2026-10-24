@@ -1,9 +1,24 @@
 <script lang="ts">
 	import { effectiveTimeSignatures, keyCenterHue, keyCenterName, type Chart } from '#lib/chart.js';
 
-	let { chart, highlightedBars = [] }: { chart: Chart; highlightedBars?: number[] } = $props();
+	interface Props {
+		chart: Chart;
+		highlightedBars?: number[];
+		flaggedBars?: number[];
+		onclearflag?: (bar: number) => void;
+		busy?: boolean;
+	}
+
+	let {
+		chart,
+		highlightedBars = [],
+		flaggedBars = [],
+		onclearflag,
+		busy = false
+	}: Props = $props();
 
 	const highlighted = $derived(new Set(highlightedBars));
+	const flagged = $derived(new Set(flaggedBars));
 
 	const signatures = $derived(effectiveTimeSignatures(chart));
 	const offsets = $derived(
@@ -66,6 +81,7 @@
 					class:ending={bar.ending}
 					class:key-centered={keyCenter}
 					class:differs={highlighted.has(offsets[s] + b)}
+					class:flagged={flagged.has(offsets[s] + b)}
 					class:under-first-ending={b in secondEndingColumns[s]}
 					style:--ending-column={secondEndingColumns[s][b]}
 					style:--hue={keyCenter && keyCenterHue(keyCenter)}
@@ -81,6 +97,16 @@
 					{#each bar.chords as chord (chord.beat)}
 						<span class="chord" style:grid-column={chord.beat}>{chord.symbol}</span>
 					{/each}
+					{#if flagged.has(offsets[s] + b)}
+						<span class="flag">
+							Review
+							{#if onclearflag}
+								<button type="button" disabled={busy} onclick={() => onclearflag(offsets[s] + b)}>
+									Clear flag
+								</button>
+							{/if}
+						</span>
+					{/if}
 				</li>
 			{/each}
 		</ol>
@@ -137,6 +163,15 @@
 		--differs-color: hsl(30 95% 50%);
 		outline: 3px solid var(--differs-color);
 		outline-offset: -3px;
+	}
+	.flagged {
+		outline: 3px dashed hsl(350 85% 50%);
+		outline-offset: -3px;
+	}
+	.flag {
+		grid-column: 1 / -1;
+		font-size: 0.75rem;
+		font-weight: 700;
 	}
 	.legend {
 		display: flex;

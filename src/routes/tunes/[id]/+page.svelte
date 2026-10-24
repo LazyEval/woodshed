@@ -70,9 +70,26 @@
 		await invalidateAll();
 	}
 
+	let verifyError = $state<string | null>(null);
+
 	async function verify() {
-		const result = await send(`/api/tunes/${tune.id}/verify`, 'POST');
-		if (result.ok) await invalidateAll();
+		verifyError = null;
+		let result = await send<{ error: string; simplifiedCharts?: string[] }>(
+			`/api/tunes/${tune.id}/verify`,
+			'POST'
+		);
+		if (!result.ok && result.body.simplifiedCharts) {
+			const names = result.body.simplifiedCharts.map((name) => `"${name}"`).join(', ');
+			if (!confirm(`The bar grid changed. Verifying archives these Simplified Charts: ${names}.`)) {
+				return;
+			}
+			result = await send(`/api/tunes/${tune.id}/verify`, 'POST', { confirmArchive: true });
+		}
+		if (!result.ok) {
+			verifyError = result.body.error;
+			return;
+		}
+		await invalidateAll();
 	}
 
 	async function reopen() {
@@ -167,6 +184,7 @@
 					{#if tune.sourceChartStatus === 'draft'}
 						<button type="button" onclick={() => (editingChart = true)}>Edit chart</button>
 						<button type="button" onclick={verify}>Mark Verified</button>
+						{#if verifyError}<p role="alert">{verifyError}</p>{/if}
 						{#if tune.scanPageCount > 0}
 							<button type="button" onclick={reextractWithOpus} disabled={extracting}>
 								Re-extract with Opus

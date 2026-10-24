@@ -1,13 +1,17 @@
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
-import type { SourceChartStatus } from '#lib/chart.js';
-import { emptyChart, isValidKey, validateChart } from '#lib/chart.js';
+import { differingBars, emptyChart, isValidKey, sameBarGrid, validateChart } from '#lib/chart.js';
 import type { Result } from '#lib/result.js';
 import type { Deps } from '#lib/server/deps.js';
 import { tunes } from '#lib/server/db/schema.js';
 import { deleteScanPages } from '#lib/server/scans.js';
 import { jsonError, readBody, tuneNotFound } from '#lib/server/http.js';
 import { scheduleOf, type TuneRow } from '#lib/server/rotation.js';
-import { listSimplifiedCharts } from '#lib/server/simplified-charts.js';
+import {
+	archive,
+	flagBars,
+	listLiveSimplifiedCharts,
+	listSimplifiedCharts
+} from '#lib/server/simplified-charts.js';
 
 const MAX_TEXT_LENGTH = 200;
 
@@ -136,20 +140,11 @@ export async function saveSourceChart(request: Request, deps: Deps, id: string):
 	return saved ? Response.json(saved) : jsonError(VERIFIED_LOCKED, 409);
 }
 
-async function setChartStatus(
-	deps: Deps,
-	id: string,
-	status: SourceChartStatus
-): Promise<Response> {
-	const now = deps.clock.now().getTime();
+export async function reopenSourceChart(deps: Deps, id: string): Promise<Response> {
 	const [changed] = await deps.db
 		.update(tunes)
-		.set({
-			sourceChartStatus: status,
-			updatedAt: now,
-			...(status === 'verified' && { verifiedAt: sql`coalesce(${tunes.verifiedAt}, ${now})` })
-		})
-		.where(and(eq(tunes.id, id), ne(tunes.sourceChartStatus, status)))
+		.set({ sourceChartStatus: 'draft', updatedAt: deps.clock.now().getTime() })
+		.where(and(eq(tunes.id, id), ne(tunes.sourceChartStatus, 'draft')))
 		.returning();
 	if (changed) return Response.json(changed);
 
@@ -157,9 +152,52 @@ async function setChartStatus(
 	return unchanged ? Response.json(unchanged) : tuneNotFound();
 }
 
-export const markChartVerified = (deps: Deps, id: string) => setChartStatus(deps, id, 'verified');
+export async function markChartVerified(
+	deps: Deps,
+	id: string,
+	body: Record<string, unknown> = {}
+): Promise<Response> {
+	const tune = await findTune(deps, id);
+	if (!tune) return tuneNotFound();
+	if (tune.sourceChartStatus === 'verified') return Response.json(tune);
 
-export const reopenSourceChart = (deps: Deps, id: string) => setChartStatus(deps, id, 'draft');
+	const now = deps.clock.now().getTime();
+	const verifyTune = deps.db
+		.update(tunes)
+		.set({
+			sourceChartStatus: 'verified',
+			updatedAt: now,
+			verifiedAt: sql`coalesce(${tunes.verifiedAt}, ${now})`,
+			verifiedChart: tune.sourceChart
+		})
+		.where(eq(tunes.id, id))
+		.returning();
+
+	const liveCharts = await listLiveSimplifiedCharts(deps, id);
+	const lastVerified = tune.verifiedChart;
+	if (!lastVerified || liveCharts.length === 0) return Response.json((await verifyTune)[0]);
+
+	if (sameBarGrid(lastVerified, tune.sourceChart)) {
+		const changedBars = differingBars(lastVerified, tune.sourceChart);
+		const flagUpdates = liveCharts.map((chart) => flagBars(deps, chart, changedBars));
+		const [[verified]] = await deps.db.batch([verifyTune, ...flagUpdates]);
+		return Response.json(verified);
+	}
+
+	if (body.confirmArchive !== true) {
+		return Response.json(
+			{
+				error:
+					'The bar grid changed, so verifying archives the Simplified Charts. Confirm to continue.',
+				simplifiedCharts: liveCharts.map((chart) => chart.name)
+			},
+			{ status: 409 }
+		);
+	}
+	const archiveUpdates = liveCharts.map((chart) => archive(deps, chart, now));
+	const [[verified]] = await deps.db.batch([verifyTune, ...archiveUpdates]);
+	return Response.json(verified);
+}
 
 export async function deleteTune(deps: Deps, id: string): Promise<Response> {
 	const [deleted] = await deps.db
