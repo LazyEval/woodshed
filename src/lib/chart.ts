@@ -36,8 +36,19 @@ export interface Section {
 	bars: Bar[];
 }
 
+export type KeyMode = 'major' | 'minor';
+export const KEY_MODES: readonly KeyMode[] = ['major', 'minor'];
+
+export interface KeyCenter {
+	startBar: number;
+	endBar: number;
+	tonic: string;
+	mode: KeyMode;
+}
+
 export interface Chart {
 	sections: Section[];
+	keyCenters?: KeyCenter[];
 }
 
 export type SourceChartStatus = 'draft' | 'verified';
@@ -64,6 +75,28 @@ export function isValidChordSymbol(symbol: string): boolean {
 }
 
 const KEY_PATTERN = /^[A-G][#b]?m?$/;
+const TONIC_PATTERN = /^[A-G][#b]?$/;
+
+function isValidTonic(tonic: string): boolean {
+	return TONIC_PATTERN.test(tonic);
+}
+
+export function countBars(chart: { sections: { bars: unknown[] }[] }): number {
+	return chart.sections.reduce((total, section) => total + section.bars.length, 0);
+}
+
+const SEMITONES: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+const MINOR_HUE_OFFSET = 15;
+
+export function keyCenterHue({ tonic, mode }: Pick<KeyCenter, 'tonic' | 'mode'>): number {
+	const accidental = tonic.endsWith('#') ? 1 : tonic.endsWith('b') ? -1 : 0;
+	const semitone = (SEMITONES[tonic[0]] + accidental + 12) % 12;
+	return semitone * 30 + (mode === 'minor' ? MINOR_HUE_OFFSET : 0);
+}
+
+export function keyCenterName(keyCenter: Pick<KeyCenter, 'tonic' | 'mode'>): string {
+	return `${keyCenter.tonic} ${keyCenter.mode}`;
+}
 
 export function isValidKey(key: string): boolean {
 	return KEY_PATTERN.test(key);
@@ -176,9 +209,55 @@ export function validateChart(chart: unknown): Result<Chart> {
 		}
 		sections.push({ label, bars });
 	}
-	const validated = { sections };
-	const structure = validateStructure(validated);
-	return structure ? { error: structure } : { value: validated };
+	const structure = validateStructure({ sections });
+	if (structure) return { error: structure };
+
+	const keyCenters = validateKeyCenters(chart.keyCenters, countBars({ sections }));
+	if ('error' in keyCenters) return keyCenters;
+	return {
+		value: keyCenters.value.length ? { sections, keyCenters: keyCenters.value } : { sections }
+	};
+}
+
+function validateKeyCenters(raw: unknown, barCount: number): Result<KeyCenter[]> {
+	if (raw === undefined) return { value: [] };
+	if (!Array.isArray(raw)) return { error: 'Key centers must be a list.' };
+
+	const keyCenters: KeyCenter[] = [];
+	for (const [i, item] of raw.entries()) {
+		const location = `Key center ${i + 1}`;
+		if (!isRecord(item)) return { error: `${location}: must be an object.` };
+		const { startBar, endBar, tonic, mode } = item;
+		if (
+			typeof startBar !== 'number' ||
+			typeof endBar !== 'number' ||
+			!Number.isInteger(startBar) ||
+			!Number.isInteger(endBar)
+		) {
+			return { error: `${location}: start and end must be whole bar numbers.` };
+		}
+		if (startBar < 1 || endBar > barCount) {
+			return { error: `${location}: bars must be within 1 to ${barCount}.` };
+		}
+		if (endBar < startBar) return { error: `${location}: end bar is before the start bar.` };
+		if (typeof tonic !== 'string' || !isValidTonic(tonic)) {
+			return { error: `${location}: tonic must be a note like C, Bb or F#.` };
+		}
+		const keyMode = KEY_MODES.find((m) => m === mode);
+		if (!keyMode) return { error: `${location}: mode must be ${KEY_MODES.join(' or ')}.` };
+		keyCenters.push({ startBar, endBar, tonic, mode: keyMode });
+	}
+
+	keyCenters.sort((a, b) => a.startBar - b.startBar);
+	for (const [i, keyCenter] of keyCenters.entries()) {
+		const previous = keyCenters[i - 1];
+		if (previous && keyCenter.startBar <= previous.endBar) {
+			return {
+				error: `Key centers ${keyCenterName(previous)} and ${keyCenterName(keyCenter)} overlap at bar ${keyCenter.startBar}.`
+			};
+		}
+	}
+	return { value: keyCenters };
 }
 
 function validateTimeSignature(raw: unknown, location: string): Result<TimeSignature> {

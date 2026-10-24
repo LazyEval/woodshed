@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { effectiveTimeSignatures, type Chart } from '#lib/chart.js';
+	import { effectiveTimeSignatures, keyCenterHue, keyCenterName, type Chart } from '#lib/chart.js';
 
 	let { chart }: { chart: Chart } = $props();
 
@@ -9,7 +9,26 @@
 			chart.sections.slice(0, s).reduce((total, section) => total + section.bars.length, 0)
 		)
 	);
+
+	const legend = $derived(
+		[...new Map((chart.keyCenters ?? []).map((k) => [keyCenterName(k), k])).values()].map((k) => ({
+			name: keyCenterName(k),
+			hue: keyCenterHue(k)
+		}))
+	);
+
+	function keyCenterAt(barNumber: number) {
+		return chart.keyCenters?.find((k) => barNumber >= k.startBar && barNumber <= k.endBar);
+	}
 </script>
+
+{#if legend.length}
+	<ul class="legend" aria-label="Key centers">
+		{#each legend as { name, hue } (name)}
+			<li><span class="swatch" style:--hue={hue}></span>{name}</li>
+		{/each}
+	</ul>
+{/if}
 
 {#each chart.sections as section, s (s)}
 	<section class="section">
@@ -17,11 +36,14 @@
 		<ol class="bars">
 			{#each section.bars as bar, b (b)}
 				{@const signature = signatures[offsets[s] + b]}
+				{@const keyCenter = keyCenterAt(offsets[s] + b + 1)}
 				<li
 					class="bar"
 					class:repeat-start={bar.repeatStart}
 					class:repeat-end={bar.repeatEnd}
 					class:ending={bar.ending}
+					class:key-centered={keyCenter}
+					style:--hue={keyCenter && keyCenterHue(keyCenter)}
 					style:grid-template-columns="repeat({signature.beats}, 1fr)"
 					aria-label="Bar {b + 1}"
 				>
@@ -72,6 +94,31 @@
 		border-bottom: 1px solid #8884;
 		font-size: 1.125rem;
 		font-weight: 600;
+	}
+	.key-centered {
+		background: hsl(var(--hue) 70% 50% / 0.22);
+	}
+	@media (prefers-color-scheme: dark) {
+		.key-centered {
+			background: hsl(var(--hue) 60% 55% / 0.3);
+		}
+	}
+	.legend {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+		margin: 0 0 0.75rem;
+		padding: 0;
+		list-style: none;
+	}
+	.swatch {
+		display: inline-block;
+		width: 1rem;
+		height: 1rem;
+		margin-right: 0.375rem;
+		vertical-align: middle;
+		border: 1px solid #8886;
+		background: hsl(var(--hue) 70% 50% / 0.4);
 	}
 	.repeat-start {
 		border-left: 6px double currentColor;
