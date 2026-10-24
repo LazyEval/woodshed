@@ -4,6 +4,7 @@ import type { Chart } from '#lib/chart.js';
 import { deleteTune, getTune, markChartVerified } from '#lib/server/tunes.js';
 import { getScanPage, importTune, reextractChart } from '#lib/server/scans.js';
 import { createTestApp, jsonRequest } from './support/app';
+import { page, rowCount, uploadRequest } from './support/scan-upload';
 
 interface TuneJson {
 	id: string;
@@ -36,21 +37,11 @@ const invalidChord = {
 	chart: { sections: [{ label: 'A', bars: [{ chords: [{ beat: 1, symbol: 'H#?' }] }] }] }
 };
 
-function page(content: string, type = 'image/jpeg'): File {
-	return new File([content], 'page', { type });
-}
-
 function importRequest(pages: File[], fields: Record<string, string> = {}): Request {
-	const form = new FormData();
-	for (const file of pages) form.append('pages', file);
-	for (const [name, value] of Object.entries(fields)) form.append(name, value);
-	return new Request('https://woodshed.test/api/tunes/import', { method: 'POST', body: form });
+	return uploadRequest(pages, fields);
 }
 
-async function tuneCount(): Promise<number> {
-	const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM tunes').first<{ n: number }>();
-	return row!.n;
-}
+const tuneCount = () => rowCount('tunes');
 
 async function scanObjectCount(): Promise<number> {
 	return (await env.SCANS.list()).objects.length;

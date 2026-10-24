@@ -29,3 +29,5 @@ export interface TuneDetail extends TuneSummary, Schedule {
 
 export const isArchived = (chart: Pick<SimplifiedChartView, 'archivedAt'>) =>
 	chart.archivedAt !== null;
+
+export const CONFIRM_ARCHIVE = { name: 'confirmArchive', value: 'true' } as const;

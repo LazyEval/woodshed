@@ -6,6 +6,7 @@ import { logPracticeSession } from '#lib/server/rotation.js';
 import { createSimplifiedChart } from '#lib/server/simplified-charts.js';
 import { getTune, markChartVerified, updateTune } from '#lib/server/tunes.js';
 import { createTestApp, jsonRequest, type TestApp } from './support/app';
+import { page, rowCount, uploadRequest } from './support/scan-upload';
 
 interface TuneJson {
 	id: string;
@@ -49,19 +50,8 @@ const newExtraction = {
 	}
 };
 
-function page(content: string): File {
-	return new File([content], 'page', { type: 'image/jpeg' });
-}
-
-function pagesRequest(pages: File[], fields: Record<string, string> = {}, path = '/import') {
-	const form = new FormData();
-	for (const file of pages) form.append('pages', file);
-	for (const [name, value] of Object.entries(fields)) form.append(name, value);
-	return new Request(`https://woodshed.test/api/tunes${path}`, { method: 'POST', body: form });
-}
-
 function replace(app: TestApp, id: string, pages: File[], fields: Record<string, string> = {}) {
-	return replaceSourceChart(pagesRequest(pages, fields, `/${id}/replace`), app.deps, id);
+	return replaceSourceChart(uploadRequest(pages, fields, `/${id}/replace`), app.deps, id);
 }
 
 async function tuneOf(app: TestApp, id: string) {
@@ -70,8 +60,8 @@ async function tuneOf(app: TestApp, id: string) {
 
 async function verifiedTuneWithCharts(app: TestApp, names: string[]) {
 	app.ai.extractions = [oldExtraction];
-	const tune = (await importTune(pagesRequest([page('old-1'), page('old-2')]), app.deps).then((r) =>
-		r.json()
+	const tune = (await importTune(uploadRequest([page('old-1'), page('old-2')]), app.deps).then(
+		(r) => r.json()
 	)) as TuneJson;
 	await markChartVerified(app.deps, tune.id);
 	for (const name of names) {
@@ -185,10 +175,72 @@ describe('Replacement of a Source Chart', () => {
 
 		await replace(app, id, [page('new')]);
 
-		const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM practice_sessions').first<{
-			n: number;
+		expect(await rowCount('practice_sessions')).toBe(1);
+		const session = await env.DB.prepare('SELECT tune_id FROM practice_sessions').first<{
+			tune_id: string;
 		}>();
-		expect(row!.n).toBe(1);
+		expect(session?.tune_id).toBe(id);
+	});
+
+	it('asks for confirmation again when a Simplified Chart appears during extraction', async () => {
+		const app = createTestApp();
+		const id = await verifiedTuneWithCharts(app, ['Shells']);
+		const original = app.ai.extract.bind(app.ai);
+		app.ai.extract = async (request) => {
+			await createSimplifiedChart(
+				jsonRequest(`/api/tunes/${id}/simplified-charts`, 'POST', { name: 'Late' }),
+				app.deps,
+				id
+			);
+			return original(request);
+		};
+
+		const response = await replace(app, id, [page('new')], { confirmArchive: 'true' });
+
+		expect(response.status).toBe(409);
+		expect(((await response.json()) as { simplifiedCharts: string[] }).simplifiedCharts).toEqual([
+			'Shells',
+			'Late'
+		]);
+		const tune = await tuneOf(app, id);
+		expect(tune.sourceChartStatus).toBe('verified');
+		expect(tune.simplifiedCharts.every((c) => c.archivedAt === null)).toBe(true);
+	});
+
+	it('keeps the old Scan and chart when the database write fails', async () => {
+		const app = createTestApp();
+		const id = await verifiedTuneWithCharts(app, []);
+		await env.DB.exec(
+			`CREATE TRIGGER block_tune_update BEFORE UPDATE ON tunes BEGIN SELECT RAISE(ABORT, 'blocked'); END`
+		);
+
+		try {
+			await expect(replace(app, id, [page('new')])).rejects.toThrow();
+		} finally {
+			await env.DB.exec('DROP TRIGGER block_tune_update');
+		}
+
+		const tune = await tuneOf(app, id);
+		expect(tune).toMatchObject({ sourceChartStatus: 'verified', scanPageCount: 2 });
+		expect(await pageText(app, id, 0)).toBe('old-1');
+		expect(await pageText(app, id, 1)).toBe('old-2');
+		expect((await env.SCANS.list()).objects).toHaveLength(2);
+	});
+
+	it('still succeeds when cleaning up the previous Scan fails', async () => {
+		const scans = new Proxy(env.SCANS, {
+			get: (target, property) =>
+				property === 'delete'
+					? () => Promise.reject(new Error('r2 down'))
+					: Reflect.get(target, property).bind(target)
+		});
+		const app = createTestApp({ scans });
+		const id = await verifiedTuneWithCharts(app, []);
+
+		const response = await replace(app, id, [page('new')]);
+
+		expect(response.status).toBe(200);
+		expect(await pageText(app, id, 0)).toBe('new');
 	});
 
 	it('rejects bad pages, unknown models and missing Tunes without calling the AI', async () => {

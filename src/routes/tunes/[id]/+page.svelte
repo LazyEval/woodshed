@@ -22,6 +22,7 @@
 	let detailsError = $state<string | null>(null);
 	let chartError = $state<string | null>(null);
 	let saving = $state(false);
+	let replacing = $state(false);
 
 	function startEditingDetails() {
 		title = tune.title;
@@ -97,8 +98,6 @@
 		const result = await send(`/api/tunes/${tune.id}/reopen`, 'POST');
 		if (result.ok) await invalidateAll();
 	}
-
-	let replacing = $state(false);
 
 	let selectedChartId = $state<string | null>(null);
 	let editingSimplified = $state(false);
@@ -211,7 +210,7 @@
 	<hr />
 	{#if replacing}
 		<h2>Replace Source Chart</h2>
-		<ScanImport tuneId={tune.id} ondone={() => (replacing = false)} />
+		<ScanImport replace={{ tuneId: tune.id, ondone: () => (replacing = false) }} />
 		<button type="button" onclick={() => (replacing = false)}>Cancel</button>
 	{:else}
 		<button type="button" onclick={() => (replacing = true)}>Replace Source Chart</button>

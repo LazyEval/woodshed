@@ -5,6 +5,7 @@ import type { ExtractionModel, ScanImage } from '#lib/server/ai.js';
 import type { Deps } from '#lib/server/deps.js';
 import { tunes } from '#lib/server/db/schema.js';
 import { jsonError, tuneNotFound } from '#lib/server/http.js';
+import { CONFIRM_ARCHIVE } from '#lib/tune.js';
 import { archive, listLiveSimplifiedCharts } from '#lib/server/simplified-charts.js';
 
 export const MAX_SCAN_PAGES = 12;
@@ -205,6 +206,16 @@ export async function importTune(request: Request, deps: Deps): Promise<Response
 	}
 }
 
+function archiveConfirmation(charts: { name: string }[]): Response {
+	return Response.json(
+		{
+			error: 'Replacing the Source Chart archives the Simplified Charts. Confirm to continue.',
+			simplifiedCharts: charts.map((chart) => chart.name)
+		},
+		{ status: 409 }
+	);
+}
+
 export async function replaceSourceChart(
 	request: Request,
 	deps: Deps,
@@ -219,19 +230,18 @@ export async function replaceSourceChart(
 	const tune = await deps.db.query.tunes.findFirst({ where: eq(tunes.id, id) });
 	if (!tune) return tuneNotFound();
 
+	const confirmed = form.get(CONFIRM_ARCHIVE.name) === CONFIRM_ARCHIVE.value;
 	const liveCharts = await listLiveSimplifiedCharts(deps, id);
-	if (liveCharts.length > 0 && form.get('confirmArchive') !== 'true') {
-		return Response.json(
-			{
-				error: 'Replacing the Source Chart archives the Simplified Charts. Confirm to continue.',
-				simplifiedCharts: liveCharts.map((chart) => chart.name)
-			},
-			{ status: 409 }
-		);
-	}
+	if (liveCharts.length > 0 && !confirmed) return archiveConfirmation(liveCharts);
 
 	const extraction = await extractWithRetry(deps, pages, model);
 	if ('failure' in extraction) return extraction.failure;
+
+	const confirmedIds = new Set(liveCharts.map((chart) => chart.id));
+	const unconfirmed = (await listLiveSimplifiedCharts(deps, id)).filter(
+		(chart) => !confirmedIds.has(chart.id)
+	);
+	if (unconfirmed.length > 0) return archiveConfirmation([...liveCharts, ...unconfirmed]);
 
 	const now = deps.clock.now().getTime();
 	const version = tune.scanVersion + 1;
@@ -250,10 +260,11 @@ export async function replaceSourceChart(
 		.where(and(eq(tunes.id, id), eq(tunes.scanVersion, tune.scanVersion)))
 		.returning();
 	try {
-		const [[replaced]] = await deps.db.batch([
+		const [replacedRows] = await deps.db.batch([
 			replaceChart,
 			...liveCharts.map((chart) => archive(deps, chart, now))
 		]);
+		const replaced = replacedRows[0];
 		if (!replaced) {
 			await deleteScanPages(deps, id, version, pages.length).catch(() => undefined);
 			return jsonError('The Source Chart was replaced concurrently. Try again.', 409);
