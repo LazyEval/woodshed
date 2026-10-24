@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { effectiveTimeSignatures, keyCenterName, type Chart } from '#lib/chart.js';
+	import { effectiveTimeSignatures, keyCenterHue, keyCenterName, type Chart } from '#lib/chart.js';
 
 	let { chart }: { chart: Chart } = $props();
 
@@ -10,19 +10,22 @@
 		)
 	);
 
-	const legend = $derived([...new Set((chart.keyCenters ?? []).map(keyCenterName))]);
+	const legend = $derived(
+		[...new Map((chart.keyCenters ?? []).map((k) => [keyCenterName(k), k])).values()].map((k) => ({
+			name: keyCenterName(k),
+			hue: keyCenterHue(k)
+		}))
+	);
 
 	function keyCenterAt(barNumber: number) {
 		return chart.keyCenters?.find((k) => barNumber >= k.startBar && barNumber <= k.endBar);
 	}
-
-	const hue = (name: string) => legend.indexOf(name) * 137.5;
 </script>
 
 {#if legend.length}
 	<ul class="legend" aria-label="Key centers">
-		{#each legend as name (name)}
-			<li><span class="swatch" style:--hue={hue(name)}></span>{name}</li>
+		{#each legend as { name, hue } (name)}
+			<li><span class="swatch" style:--hue={hue}></span>{name}</li>
 		{/each}
 	</ul>
 {/if}
@@ -40,7 +43,7 @@
 					class:repeat-end={bar.repeatEnd}
 					class:ending={bar.ending}
 					class:key-centered={keyCenter}
-					style:--hue={keyCenter && hue(keyCenterName(keyCenter))}
+					style:--hue={keyCenter && keyCenterHue(keyCenter)}
 					style:grid-template-columns="repeat({signature.beats}, 1fr)"
 					aria-label="Bar {b + 1}"
 				>
@@ -93,7 +96,12 @@
 		font-weight: 600;
 	}
 	.key-centered {
-		background: hsl(var(--hue) 70% 50% / 0.18);
+		background: hsl(var(--hue) 70% 50% / 0.22);
+	}
+	@media (prefers-color-scheme: dark) {
+		.key-centered {
+			background: hsl(var(--hue) 60% 55% / 0.3);
+		}
 	}
 	.legend {
 		display: flex;

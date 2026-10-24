@@ -85,6 +85,15 @@ export function countBars(chart: { sections: { bars: unknown[] }[] }): number {
 	return chart.sections.reduce((total, section) => total + section.bars.length, 0);
 }
 
+const SEMITONES: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+const MINOR_HUE_OFFSET = 15;
+
+export function keyCenterHue({ tonic, mode }: Pick<KeyCenter, 'tonic' | 'mode'>): number {
+	const accidental = tonic.endsWith('#') ? 1 : tonic.endsWith('b') ? -1 : 0;
+	const semitone = (SEMITONES[tonic[0]] + accidental + 12) % 12;
+	return semitone * 30 + (mode === 'minor' ? MINOR_HUE_OFFSET : 0);
+}
+
 export function keyCenterName(keyCenter: Pick<KeyCenter, 'tonic' | 'mode'>): string {
 	return `${keyCenter.tonic} ${keyCenter.mode}`;
 }

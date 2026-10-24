@@ -115,7 +115,18 @@
 		...(keyCenters.length && { keyCenters: $state.snapshot(keyCenters) as Chart['keyCenters'] })
 	});
 
+	const offsets = $derived(
+		sections.map((_, s) =>
+			sections.slice(0, s).reduce((total, section) => total + section.bars.length, 0)
+		)
+	);
+
 	const problem = $derived.by(() => {
+		for (const [k, keyCenter] of keyCenters.entries()) {
+			if (keyCenter.startBar === null || keyCenter.endBar === null) {
+				return `Key center ${k + 1}: start and end bars are required.`;
+			}
+		}
 		for (const [s, section] of sections.entries()) {
 			for (const [b, bar] of section.bars.entries()) {
 				const location = `Section ${s + 1} (${section.label}), bar ${b + 1}`;
@@ -170,6 +181,7 @@
 			<ol class="bars">
 				{#each section.bars as bar, b (b)}
 					<li class="bar-cell">
+						<span class="bar-number" aria-hidden="true">{offsets[s] + b + 1}</span>
 						<div class="bar" aria-label="Bar {b + 1}">
 							{#each { length: signatures[s][b].beats }, i (i)}
 								<input
@@ -259,7 +271,9 @@
 
 	<fieldset>
 		<legend>Key centers</legend>
-		<p class="hint">Bar numbers count from the first bar of the chart.</p>
+		<p class="hint">
+			Bar numbers are shown above each bar and count from the first bar of the chart.
+		</p>
 		{#each keyCenters as keyCenter, k (k)}
 			<div class="key-center">
 				<label>
@@ -332,6 +346,10 @@
 	.bar-cell {
 		display: grid;
 		gap: 2px;
+	}
+	.bar-number {
+		font-size: 0.75rem;
+		opacity: 0.7;
 	}
 	.bar {
 		display: flex;
