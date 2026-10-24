@@ -46,7 +46,7 @@ Single shared password. `POST /login/submit` compares it in constant time agains
 
 ## Tunes API
 
-JSON, session required. `GET/POST /api/tunes` (`?q=` title search), `GET/PATCH/DELETE /api/tunes/:id`, `PUT /api/tunes/:id/chart` (validated; 409 once Verified), `POST /api/tunes/:id/verify`. Errors are `{ "error": message }`. The Source Chart is stored as a validated JSON document on the tune (`src/lib/chart.ts`).
+JSON, session required. `GET/POST /api/tunes` (`?q=` title search), `GET/PATCH/DELETE /api/tunes/:id`, `PUT /api/tunes/:id/chart` (validated; 409 once Verified), `POST /api/tunes/:id/verify` and `/reopen`. Errors are `{ "error": message }`. The Source Chart is stored as a validated JSON document on the tune (`src/lib/chart.ts`).
 
 ## Deploy
 

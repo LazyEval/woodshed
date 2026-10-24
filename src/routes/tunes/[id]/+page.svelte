@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { sendJson as send } from '#lib/api.js';
+	import TuneFields from '#lib/components/TuneFields.svelte';
 	import ChartEditor from '#lib/components/ChartEditor.svelte';
 	import ChartGrid from '#lib/components/ChartGrid.svelte';
 	import type { Chart } from '#lib/chart.js';
@@ -23,16 +25,6 @@
 		key = tune.key ?? '';
 		detailsError = null;
 		editingDetails = true;
-	}
-
-	async function send(path: string, method: string, body?: unknown) {
-		const response = await fetch(path, {
-			method,
-			headers: { 'content-type': 'application/json' },
-			body: body === undefined ? undefined : JSON.stringify(body)
-		});
-		const text = await response.text();
-		return { ok: response.ok, body: text ? JSON.parse(text) : null };
 	}
 
 	async function saveDetails(event: SubmitEvent) {
@@ -64,6 +56,11 @@
 		if (result.ok) await invalidateAll();
 	}
 
+	async function reopen() {
+		const result = await send(`/api/tunes/${tune.id}/reopen`, 'POST');
+		if (result.ok) await invalidateAll();
+	}
+
 	async function remove() {
 		if (!confirm(`Delete "${tune.title}"? This cannot be undone.`)) return;
 		const result = await send(`/api/tunes/${tune.id}`, 'DELETE');
@@ -80,9 +77,7 @@
 
 	{#if editingDetails}
 		<form onsubmit={saveDetails}>
-			<label>Title <input bind:value={title} required /></label>
-			<label>Composer <input bind:value={composer} /></label>
-			<label>Key <input bind:value={key} placeholder="e.g. Bb or F#m" /></label>
+			<TuneFields bind:title bind:composer bind:key />
 			{#if detailsError}<p role="alert">{detailsError}</p>{/if}
 			<button type="submit">Save</button>
 			<button type="button" onclick={() => (editingDetails = false)}>Cancel</button>
@@ -106,6 +101,8 @@
 		{#if tune.sourceChartStatus === 'draft'}
 			<button type="button" onclick={() => (editingChart = true)}>Edit chart</button>
 			<button type="button" onclick={verify}>Mark Verified</button>
+		{:else}
+			<button type="button" onclick={reopen}>Reopen</button>
 		{/if}
 	{/if}
 
@@ -122,9 +119,5 @@
 	form {
 		display: grid;
 		gap: 0.5rem;
-	}
-	label {
-		display: grid;
-		gap: 0.25rem;
 	}
 </style>

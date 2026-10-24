@@ -31,6 +31,11 @@
 		list-style: none;
 		border-left: 2px solid currentColor;
 	}
+	@media (max-width: 24rem) {
+		.bars {
+			grid-template-columns: 1fr;
+		}
+	}
 	@media (min-width: 40rem) {
 		.bars {
 			grid-template-columns: repeat(4, 1fr);

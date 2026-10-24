@@ -1,5 +1,7 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
-import { emptyChart, isValidKey, validateChart } from '#lib/chart.js';
+import { and, asc, eq, ne, sql } from 'drizzle-orm';
+import type { SourceChartStatus } from '#lib/chart.js';
+import { emptyChart, isRecord, isValidKey, validateChart } from '#lib/chart.js';
+import type { Result } from '#lib/result.js';
 import type { Deps } from '#lib/server/deps.js';
 import { tunes } from '#lib/server/db/schema.js';
 
@@ -10,8 +12,6 @@ interface TuneFields {
 	composer: string | null;
 	key: string | null;
 }
-
-type Parsed<T> = { value: T } | { error: string };
 
 function jsonError(error: string, status: number): Response {
 	return Response.json({ error }, { status });
@@ -27,7 +27,7 @@ async function readJson(request: Request): Promise<unknown> {
 	}
 }
 
-function optionalText(value: unknown, name: string): Parsed<string | null> {
+function optionalText(value: unknown, name: string): Result<string | null> {
 	if (value === undefined || value === null) return { value: null };
 	if (typeof value !== 'string') return { error: `${name} must be text.` };
 	const trimmed = value.trim();
@@ -35,7 +35,7 @@ function optionalText(value: unknown, name: string): Parsed<string | null> {
 	return { value: trimmed || null };
 }
 
-function parseFields(body: Record<string, unknown>): Parsed<TuneFields> {
+function parseFields(body: Record<string, unknown>): Result<TuneFields> {
 	if (typeof body.title !== 'string' || !body.title.trim()) return { error: 'Title is required.' };
 	if (body.title.trim().length > MAX_TEXT_LENGTH) return { error: 'Title is too long.' };
 
@@ -51,10 +51,15 @@ function parseFields(body: Record<string, unknown>): Parsed<TuneFields> {
 	return { value: { title: body.title.trim(), composer: composer.value, key: key.value } };
 }
 
-function asRecord(body: unknown): Record<string, unknown> | null {
-	return typeof body === 'object' && body !== null && !Array.isArray(body)
-		? (body as Record<string, unknown>)
-		: null;
+const VERIFIED_LOCKED = 'Source Chart is Verified and cannot be edited. Reopen it first.';
+
+async function readBody(request: Request): Promise<Result<Record<string, unknown>>> {
+	const body = await readJson(request);
+	return isRecord(body) ? { value: body } : { error: 'Request body must be a JSON object.' };
+}
+
+function findTune(deps: Deps, id: string) {
+	return deps.db.query.tunes.findFirst({ where: eq(tunes.id, id) });
 }
 
 export async function listTunes(request: Request, deps: Deps): Promise<Response> {
@@ -76,9 +81,9 @@ export async function listTunes(request: Request, deps: Deps): Promise<Response>
 }
 
 export async function createTune(request: Request, deps: Deps): Promise<Response> {
-	const body = asRecord(await readJson(request));
-	if (!body) return jsonError('Request body must be a JSON object.', 400);
-	const fields = parseFields(body);
+	const body = await readBody(request);
+	if ('error' in body) return jsonError(body.error, 400);
+	const fields = parseFields(body.value);
 	if ('error' in fields) return jsonError(fields.error, 400);
 
 	const now = deps.clock.now().getTime();
@@ -96,17 +101,17 @@ export async function createTune(request: Request, deps: Deps): Promise<Response
 }
 
 export async function getTune(deps: Deps, id: string): Promise<Response> {
-	const tune = await deps.db.query.tunes.findFirst({ where: eq(tunes.id, id) });
+	const tune = await findTune(deps, id);
 	return tune ? Response.json(tune) : notFound();
 }
 
 export async function updateTune(request: Request, deps: Deps, id: string): Promise<Response> {
-	const body = asRecord(await readJson(request));
-	if (!body) return jsonError('Request body must be a JSON object.', 400);
-	const existing = await deps.db.query.tunes.findFirst({ where: eq(tunes.id, id) });
+	const body = await readBody(request);
+	if ('error' in body) return jsonError(body.error, 400);
+	const existing = await findTune(deps, id);
 	if (!existing) return notFound();
 
-	const fields = parseFields({ ...existing, ...body });
+	const fields = parseFields({ ...existing, ...body.value });
 	if ('error' in fields) return jsonError(fields.error, 400);
 
 	const [tune] = await deps.db
@@ -118,35 +123,44 @@ export async function updateTune(request: Request, deps: Deps, id: string): Prom
 }
 
 export async function saveSourceChart(request: Request, deps: Deps, id: string): Promise<Response> {
-	const body = asRecord(await readJson(request));
-	if (!body) return jsonError('Request body must be a JSON object.', 400);
-	const tune = await deps.db.query.tunes.findFirst({ where: eq(tunes.id, id) });
+	const body = await readBody(request);
+	if ('error' in body) return jsonError(body.error, 400);
+	const tune = await findTune(deps, id);
 	if (!tune) return notFound();
 	if (tune.sourceChartStatus === 'verified') {
-		return jsonError('Source Chart is Verified and cannot be edited.', 409);
+		return jsonError(VERIFIED_LOCKED, 409);
 	}
 
-	const validated = validateChart(body.chart);
+	const validated = validateChart(body.value.chart);
 	if ('error' in validated) return jsonError(validated.error, 400);
 
 	const [saved] = await deps.db
 		.update(tunes)
-		.set({ sourceChart: validated.chart, updatedAt: deps.clock.now().getTime() })
+		.set({ sourceChart: validated.value, updatedAt: deps.clock.now().getTime() })
 		.where(and(eq(tunes.id, id), eq(tunes.sourceChartStatus, 'draft')))
 		.returning();
-	return saved
-		? Response.json(saved)
-		: jsonError('Source Chart is Verified and cannot be edited.', 409);
+	return saved ? Response.json(saved) : jsonError(VERIFIED_LOCKED, 409);
 }
 
-export async function markChartVerified(deps: Deps, id: string): Promise<Response> {
-	const [tune] = await deps.db
+async function setChartStatus(
+	deps: Deps,
+	id: string,
+	status: SourceChartStatus
+): Promise<Response> {
+	const [changed] = await deps.db
 		.update(tunes)
-		.set({ sourceChartStatus: 'verified', updatedAt: deps.clock.now().getTime() })
-		.where(eq(tunes.id, id))
+		.set({ sourceChartStatus: status, updatedAt: deps.clock.now().getTime() })
+		.where(and(eq(tunes.id, id), ne(tunes.sourceChartStatus, status)))
 		.returning();
-	return tune ? Response.json(tune) : notFound();
+	if (changed) return Response.json(changed);
+
+	const unchanged = await findTune(deps, id);
+	return unchanged ? Response.json(unchanged) : notFound();
 }
+
+export const markChartVerified = (deps: Deps, id: string) => setChartStatus(deps, id, 'verified');
+
+export const reopenSourceChart = (deps: Deps, id: string) => setChartStatus(deps, id, 'draft');
 
 export async function deleteTune(deps: Deps, id: string): Promise<Response> {
 	const deleted = await deps.db.delete(tunes).where(eq(tunes.id, id)).returning({ id: tunes.id });

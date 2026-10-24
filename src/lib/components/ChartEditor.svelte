@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { BEATS_PER_BAR, validateChart, type Chart } from '#lib/chart.js';
+	import { BEATS_PER_BAR, barToSlots, slotsToBar, validateChart, type Chart } from '#lib/chart.js';
 
 	interface Props {
 		chart: Chart;
@@ -17,26 +17,20 @@
 
 	const slotIndexes = Array.from({ length: BEATS_PER_BAR }, (_, i) => i);
 
+	const emptySlots = () => barToSlots({ chords: [] });
+
 	// svelte-ignore state_referenced_locally
 	let sections = $state<EditableSection[]>(
 		chart.sections.map((section) => ({
 			label: section.label,
-			bars: section.bars.map((bar) => {
-				const slots = slotIndexes.map(() => '');
-				for (const chord of bar.chords) slots[chord.beat - 1] = chord.symbol;
-				return slots;
-			})
+			bars: section.bars.map(barToSlots)
 		}))
 	);
 
-	const draft = $derived<unknown>({
+	const draft = $derived<Chart>({
 		sections: sections.map((section) => ({
 			label: section.label,
-			bars: section.bars.map((slots) => ({
-				chords: slots.flatMap((symbol, i) =>
-					symbol.trim() ? [{ beat: i + 1, symbol: symbol.trim() }] : []
-				)
-			}))
+			bars: section.bars.map(slotsToBar)
 		}))
 	});
 	const problem = $derived.by(() => {
@@ -45,21 +39,17 @@
 	});
 
 	function addSection() {
-		sections.push({ label: '', bars: [slotIndexes.map(() => '')] });
+		sections.push({ label: '', bars: [emptySlots()] });
 	}
 
-	function addBar(section: EditableSection) {
-		section.bars.push(slotIndexes.map(() => ''));
-	}
-
-	function removeBar(section: EditableSection) {
-		if (section.bars.length > 1) section.bars.pop();
+	function removeBar(section: EditableSection, index: number) {
+		if (section.bars.length > 1) section.bars.splice(index, 1);
 	}
 
 	function save(event: SubmitEvent) {
 		event.preventDefault();
 		const result = validateChart(draft);
-		if ('chart' in result) onsave(result.chart);
+		if ('value' in result) onsave(result.value);
 	}
 </script>
 
@@ -73,24 +63,30 @@
 			</div>
 			<ol class="bars">
 				{#each section.bars as slots, b (b)}
-					<li class="bar" aria-label="Bar {b + 1}">
-						{#each slotIndexes as i (i)}
-							<input
-								bind:value={slots[i]}
-								aria-label="Section {s + 1} bar {b + 1} beat {i + 1}"
-								placeholder={String(i + 1)}
-								autocapitalize="characters"
-								autocomplete="off"
-								spellcheck="false"
-							/>
-						{/each}
+					<li class="bar-cell">
+						<div class="bar" aria-label="Bar {b + 1}">
+							{#each slotIndexes as i (i)}
+								<input
+									bind:value={slots[i]}
+									aria-label="Section {s + 1} bar {b + 1} beat {i + 1}"
+									placeholder={String(i + 1)}
+									autocapitalize="characters"
+									autocomplete="off"
+									spellcheck="false"
+								/>
+							{/each}
+						</div>
+						<button
+							type="button"
+							class="remove-bar"
+							aria-label="Remove section {s + 1} bar {b + 1}"
+							onclick={() => removeBar(section, b)}
+							disabled={section.bars.length <= 1}>×</button
+						>
 					</li>
 				{/each}
 			</ol>
-			<button type="button" onclick={() => addBar(section)}>Add bar</button>
-			<button type="button" onclick={() => removeBar(section)} disabled={section.bars.length <= 1}>
-				Remove last bar
-			</button>
+			<button type="button" onclick={() => section.bars.push(emptySlots())}>Add bar</button>
 		</fieldset>
 	{/each}
 
@@ -122,7 +118,16 @@
 		padding: 0;
 		list-style: none;
 	}
+	.bar-cell {
+		display: flex;
+		gap: 2px;
+		align-items: center;
+	}
+	.remove-bar {
+		padding: 0.25rem 0.5rem;
+	}
 	.bar {
+		flex: 1;
 		display: grid;
 		grid-template-columns: repeat(4, 1fr);
 		gap: 2px;

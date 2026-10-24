@@ -6,6 +6,7 @@ import {
 	getTune,
 	listTunes,
 	markChartVerified,
+	reopenSourceChart,
 	saveSourceChart,
 	updateTune
 } from '#lib/server/tunes.js';
@@ -189,11 +190,51 @@ describe('source chart', () => {
 	});
 
 	it.each([
+		'C',
+		'Dm7',
+		'G7alt',
+		'Bb7#11',
+		'F#m7b5',
+		'Ebmaj7',
+		'C6/9',
+		'C-7',
+		'CΔ7',
+		'Co7',
+		'Cm(maj7)',
+		'C7(#9,b13)',
+		'C7sus4',
+		'Csus',
+		'C13b9',
+		'Bbmaj7/Ab',
+		'C/E'
+	])('accepts chord symbol %j', async (symbol) => {
+		const { app, tune } = await newTune();
+		const chart = { sections: [{ label: 'A', bars: [{ chords: [{ beat: 1, symbol }] }] }] };
+
+		expect((await save(app, tune.id, chart)).status).toBe(200);
+	});
+
+	it('normalizes NC to N.C.', async () => {
+		const { app, tune } = await newTune();
+		const chart = { sections: [{ label: 'A', bars: [{ chords: [{ beat: 1, symbol: 'NC' }] }] }] };
+
+		await save(app, tune.id, chart);
+
+		const stored = (await getTune(app.deps, tune.id).then((r) => r.json())) as TuneJson;
+		expect(stored.sourceChart.sections[0].bars[0].chords[0].symbol).toBe('N.C.');
+	});
+
+	it.each([
 		['H7', /invalid chord symbol "H7"/],
 		['C/', /invalid chord symbol "C\/"/],
 		['Cx7', /invalid chord symbol/],
 		['', /invalid chord symbol/],
-		['N.C./E', /invalid chord symbol/]
+		['N.C./E', /invalid chord symbol/],
+		['Cmm', /invalid chord symbol/],
+		['C(((', /invalid chord symbol/],
+		['C,,,', /invalid chord symbol/],
+		['Cmaj-+^', /invalid chord symbol/],
+		['C/9', /invalid chord symbol/]
 	])('rejects chord symbol %j with a clear message', async (symbol, message) => {
 		const { app, tune } = await newTune();
 		const chart = { sections: [{ label: 'A', bars: [{ chords: [{ beat: 1, symbol }] }] }] };
@@ -254,6 +295,21 @@ describe('source chart', () => {
 		expect(((await response.json()) as TuneJson).error).toMatch(/Section 2 \(B\), bar 2/);
 	});
 
+	it('rejects a chart with no sections', async () => {
+		const { app, tune } = await newTune();
+
+		expect((await save(app, tune.id, { sections: [] })).status).toBe(400);
+	});
+
+	it('names the accepted format in the invalid chord message', async () => {
+		const { app, tune } = await newTune();
+		const chart = { sections: [{ label: 'A', bars: [{ chords: [{ beat: 1, symbol: 'Zm' }] }] }] };
+
+		const response = await save(app, tune.id, chart);
+
+		expect(((await response.json()) as TuneJson).error).toMatch(/e\.g\./);
+	});
+
 	it('404s when saving a chart for an unknown tune', async () => {
 		const app = createTestApp();
 
@@ -276,5 +332,38 @@ describe('source chart', () => {
 
 	it('404s when verifying an unknown tune', async () => {
 		expect((await markChartVerified(createTestApp().deps, 'nope')).status).toBe(404);
+	});
+
+	it('does not touch a chart that is already Verified when verifying again', async () => {
+		const { app, tune } = await newTune();
+		await markChartVerified(app.deps, tune.id);
+		const before = (await getTune(app.deps, tune.id).then((r) => r.json())) as TuneJson & {
+			updatedAt: number;
+		};
+
+		app.clock.advance(60_000);
+		const again = await markChartVerified(app.deps, tune.id);
+
+		expect(again.status).toBe(200);
+		const after = (await getTune(app.deps, tune.id).then((r) => r.json())) as typeof before;
+		expect(after.updatedAt).toBe(before.updatedAt);
+	});
+
+	it('can be reopened for edits after being Verified', async () => {
+		const { app, tune } = await newTune();
+		await save(app, tune.id, validChart);
+		await markChartVerified(app.deps, tune.id);
+
+		const reopened = await reopenSourceChart(app.deps, tune.id);
+		const edit = await save(app, tune.id, { sections: [{ label: 'B', bars: [{ chords: [] }] }] });
+
+		expect(reopened.status).toBe(200);
+		expect(edit.status).toBe(200);
+		const stored = (await getTune(app.deps, tune.id).then((r) => r.json())) as TuneJson;
+		expect(stored.sourceChartStatus).toBe('draft');
+	});
+
+	it('404s when reopening an unknown tune', async () => {
+		expect((await reopenSourceChart(createTestApp().deps, 'nope')).status).toBe(404);
 	});
 });

@@ -1,5 +1,5 @@
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
-import type { Chart } from '#lib/chart.js';
+import type { Chart, SourceChartStatus } from '#lib/chart.js';
 
 export const sessions = sqliteTable('sessions', {
 	tokenHash: text('token_hash').primaryKey(),
@@ -18,7 +18,8 @@ export const tunes = sqliteTable('tunes', {
 	composer: text('composer'),
 	key: text('key'),
 	sourceChart: text('source_chart', { mode: 'json' }).$type<Chart>().notNull(),
-	sourceChartStatus: text('source_chart_status', { enum: ['draft', 'verified'] })
+	sourceChartStatus: text('source_chart_status')
+		.$type<SourceChartStatus>()
 		.notNull()
 		.default('draft'),
 	createdAt: integer('created_at').notNull(),
