@@ -10,6 +10,26 @@
 		)
 	);
 
+	const COLUMNS_ON_WIDE_SCREEN = 4;
+
+	const secondEndingColumns = $derived(
+		chart.sections.map((section) => {
+			const columns: Record<number, number> = {};
+			let firstEndingStart: number | undefined;
+			for (const [b, bar] of section.bars.entries()) {
+				if (bar.ending === 1 && section.bars[b - 1]?.ending !== 1) firstEndingStart = b;
+				if (
+					bar.ending === 2 &&
+					section.bars[b - 1]?.ending !== 2 &&
+					firstEndingStart !== undefined
+				) {
+					columns[b] = (firstEndingStart % COLUMNS_ON_WIDE_SCREEN) + 1;
+				}
+			}
+			return columns;
+		})
+	);
+
 	const legend = $derived(
 		[...new Map((chart.keyCenters ?? []).map((k) => [keyCenterName(k), k])).values()].map((k) => ({
 			name: keyCenterName(k),
@@ -43,6 +63,8 @@
 					class:repeat-end={bar.repeatEnd}
 					class:ending={bar.ending}
 					class:key-centered={keyCenter}
+					class:under-first-ending={b in secondEndingColumns[s]}
+					style:--ending-column={secondEndingColumns[s][b]}
 					style:--hue={keyCenter && keyCenterHue(keyCenter)}
 					style:grid-template-columns="repeat({signature.beats}, 1fr)"
 					aria-label="Bar {b + 1}"
@@ -82,6 +104,11 @@
 	@media (min-width: 40rem) {
 		.bars {
 			grid-template-columns: repeat(4, 1fr);
+		}
+	}
+	@media (min-width: 40rem) {
+		.under-first-ending {
+			grid-column-start: var(--ending-column);
 		}
 	}
 	.bar {
