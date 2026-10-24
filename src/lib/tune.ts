@@ -10,4 +10,5 @@ export interface TuneSummary {
 
 export interface TuneDetail extends TuneSummary {
 	sourceChart: Chart;
+	scanPageCount: number;
 }

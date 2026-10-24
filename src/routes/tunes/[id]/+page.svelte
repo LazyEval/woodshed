@@ -51,6 +51,22 @@
 		await invalidateAll();
 	}
 
+	let extracting = $state(false);
+	let extractError = $state<string | null>(null);
+
+	async function reextractWithOpus() {
+		if (!confirm('Replace the Draft chart with a new extraction from the Scan?')) return;
+		extracting = true;
+		extractError = null;
+		const result = await send(`/api/tunes/${tune.id}/extract`, 'POST', { model: 'opus' });
+		extracting = false;
+		if (!result.ok) {
+			extractError = result.body.error;
+			return;
+		}
+		await invalidateAll();
+	}
+
 	async function verify() {
 		const result = await send(`/api/tunes/${tune.id}/verify`, 'POST');
 		if (result.ok) await invalidateAll();
@@ -88,23 +104,52 @@
 		<button type="button" onclick={startEditingDetails}>Edit details</button>
 	{/if}
 
-	<h2>
-		Source Chart
-		<small>{tune.sourceChartStatus === 'verified' ? 'Verified' : 'Draft'}</small>
-	</h2>
-
-	{#if editingChart}
-		<ChartEditor chart={tune.sourceChart} {saving} error={chartError} onsave={saveChart} />
-		<button type="button" onclick={() => (editingChart = false)}>Cancel</button>
-	{:else}
-		<ChartGrid chart={tune.sourceChart} />
-		{#if tune.sourceChartStatus === 'draft'}
-			<button type="button" onclick={() => (editingChart = true)}>Edit chart</button>
-			<button type="button" onclick={verify}>Mark Verified</button>
-		{:else}
-			<button type="button" onclick={reopen}>Reopen</button>
+	<div class="workspace" class:split={tune.scanPageCount > 0 && tune.sourceChartStatus === 'draft'}>
+		{#if tune.scanPageCount > 0}
+			{#if tune.sourceChartStatus === 'draft'}
+				<section class="scan">
+					<h2>Scan</h2>
+					{#each Array.from({ length: tune.scanPageCount }, (_, i) => i) as page (page)}
+						<img src={`/api/tunes/${tune.id}/scan/${page}`} alt={`Scan page ${page + 1}`} />
+					{/each}
+				</section>
+			{:else}
+				<details class="scan">
+					<summary>Scan</summary>
+					{#each Array.from({ length: tune.scanPageCount }, (_, i) => i) as page (page)}
+						<img src={`/api/tunes/${tune.id}/scan/${page}`} alt={`Scan page ${page + 1}`} />
+					{/each}
+				</details>
+			{/if}
 		{/if}
-	{/if}
+
+		<section>
+			<h2>
+				Source Chart
+				<small>{tune.sourceChartStatus === 'verified' ? 'Verified' : 'Draft'}</small>
+			</h2>
+
+			{#if editingChart}
+				<ChartEditor chart={tune.sourceChart} {saving} error={chartError} onsave={saveChart} />
+				<button type="button" onclick={() => (editingChart = false)}>Cancel</button>
+			{:else}
+				<ChartGrid chart={tune.sourceChart} />
+				{#if tune.sourceChartStatus === 'draft'}
+					<button type="button" onclick={() => (editingChart = true)}>Edit chart</button>
+					<button type="button" onclick={verify}>Mark Verified</button>
+					{#if tune.scanPageCount > 0}
+						<button type="button" onclick={reextractWithOpus} disabled={extracting}>
+							Re-extract with Opus
+						</button>
+						{#if extracting}<p role="status">Extracting the chart from the Scan…</p>{/if}
+						{#if extractError}<p role="alert">{extractError}</p>{/if}
+					{/if}
+				{:else}
+					<button type="button" onclick={reopen}>Reopen</button>
+				{/if}
+			{/if}
+		</section>
+	</div>
 
 	<hr />
 	<button type="button" onclick={remove}>Delete tune</button>
@@ -119,5 +164,27 @@
 	form {
 		display: grid;
 		gap: 0.5rem;
+	}
+	.scan img {
+		display: block;
+		max-width: 100%;
+		margin-bottom: 0.5rem;
+	}
+	@media (min-width: 60rem) {
+		main {
+			max-width: 90rem;
+		}
+		.split {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 1.5rem;
+			align-items: start;
+		}
+		.split .scan {
+			position: sticky;
+			top: 0.5rem;
+			max-height: 100vh;
+			overflow-y: auto;
+		}
 	}
 </style>

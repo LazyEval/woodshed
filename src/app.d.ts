@@ -11,6 +11,7 @@ declare global {
 		interface Env {
 			APP_PASSWORD: string;
 			SESSION_KEY: string;
+			ANTHROPIC_API_KEY?: string;
 		}
 	}
 }

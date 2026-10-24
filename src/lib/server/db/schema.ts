@@ -22,6 +22,7 @@ export const tunes = sqliteTable('tunes', {
 		.$type<SourceChartStatus>()
 		.notNull()
 		.default('draft'),
+	scanPageCount: integer('scan_page_count').notNull().default(0),
 	createdAt: integer('created_at').notNull(),
 	updatedAt: integer('updated_at').notNull()
 });

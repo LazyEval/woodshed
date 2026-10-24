@@ -4,6 +4,7 @@ import { emptyChart, isRecord, isValidKey, validateChart } from '#lib/chart.js';
 import type { Result } from '#lib/result.js';
 import type { Deps } from '#lib/server/deps.js';
 import { tunes } from '#lib/server/db/schema.js';
+import { deleteScanPages } from '#lib/server/scans.js';
 
 const MAX_TEXT_LENGTH = 200;
 
@@ -163,6 +164,11 @@ export const markChartVerified = (deps: Deps, id: string) => setChartStatus(deps
 export const reopenSourceChart = (deps: Deps, id: string) => setChartStatus(deps, id, 'draft');
 
 export async function deleteTune(deps: Deps, id: string): Promise<Response> {
-	const deleted = await deps.db.delete(tunes).where(eq(tunes.id, id)).returning({ id: tunes.id });
-	return deleted.length ? new Response(null, { status: 204 }) : notFound();
+	const [deleted] = await deps.db
+		.delete(tunes)
+		.where(eq(tunes.id, id))
+		.returning({ scanPageCount: tunes.scanPageCount });
+	if (!deleted) return notFound();
+	await deleteScanPages(deps, id, deleted.scanPageCount);
+	return new Response(null, { status: 204 });
 }
