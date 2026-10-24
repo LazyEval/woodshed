@@ -39,7 +39,7 @@ const barSchema = {
 	additionalProperties: false
 };
 
-export const EXTRACTION_SCHEMA = {
+const EXTRACTION_SCHEMA = {
 	type: 'object',
 	properties: {
 		title: nullableText,
@@ -83,7 +83,7 @@ export const EXTRACTION_SCHEMA = {
 	additionalProperties: false
 };
 
-export const EXTRACTION_PROMPT = `You transcribe a jazz chart from the attached image(s) into structured data. The images are consecutive pages of one chart, in order.
+const EXTRACTION_PROMPT = `You transcribe a jazz chart from the attached image(s) into structured data. The images are consecutive pages of one chart, in order.
 
 Rules:
 - Transcribe the chord changes exactly as printed. Do not simplify, reharmonize or correct them.

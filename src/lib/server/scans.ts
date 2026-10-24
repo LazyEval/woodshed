@@ -1,5 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import { emptyChart, isRecord, isValidKey, validateChart, type Chart } from '#lib/chart.js';
+import type { Result } from '#lib/result.js';
 import type { ExtractionModel, ScanImage } from '#lib/server/ai.js';
 import type { Deps } from '#lib/server/deps.js';
 import { tunes } from '#lib/server/db/schema.js';
@@ -36,7 +37,7 @@ function cleanText(value: unknown): string | null {
 	return value.trim().slice(0, MAX_TEXT_LENGTH) || null;
 }
 
-function readExtracted(raw: unknown): { value: Extracted } | { error: string } {
+function readExtracted(raw: unknown): Result<Extracted> {
 	if (!isRecord(raw)) return { error: 'Extraction result must be an object.' };
 	const chart = validateChart(raw.chart);
 	if ('error' in chart) return chart;
@@ -51,7 +52,7 @@ function readExtracted(raw: unknown): { value: Extracted } | { error: string } {
 	};
 }
 
-async function extract(
+async function extractWithRetry(
 	deps: Deps,
 	images: ScanImage[],
 	model: ExtractionModel
@@ -132,14 +133,14 @@ export async function importTune(request: Request, deps: Deps): Promise<Response
 	const model = parseModel(form.get('model'));
 	if (!model) return jsonError('Model must be sonnet or opus.', 400);
 
-	let fields: Pick<Extracted, 'title' | 'composer' | 'key'> & { chart: Chart } = {
+	let fields: Extracted = {
 		title: cleanText(form.get('title')) ?? 'Untitled',
 		composer: null,
 		key: null,
 		chart: emptyChart()
 	};
 	if (!manual) {
-		const extraction = await extract(deps, pages, model);
+		const extraction = await extractWithRetry(deps, pages, model);
 		if ('failure' in extraction) return extraction.failure;
 		fields = extraction.value;
 	}
@@ -180,7 +181,11 @@ export async function reextractChart(request: Request, deps: Deps, id: string): 
 	}
 	if (tune.scanPageCount === 0) return jsonError('Tune has no Scan to extract from.', 409);
 
-	const extraction = await extract(deps, await loadPages(deps, id, tune.scanPageCount), model);
+	const extraction = await extractWithRetry(
+		deps,
+		await loadPages(deps, id, tune.scanPageCount),
+		model
+	);
 	if ('failure' in extraction) return extraction.failure;
 
 	const [saved] = await deps.db

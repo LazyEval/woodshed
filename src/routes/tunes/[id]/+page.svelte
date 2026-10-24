@@ -88,6 +88,12 @@
 	<title>Woodshed · {tune.title}</title>
 </svelte:head>
 
+{#snippet scanPages()}
+	{#each Array.from({ length: tune.scanPageCount }, (_, i) => i) as page (page)}
+		<img src={`/api/tunes/${tune.id}/scan/${page}`} alt={`Scan page ${page + 1}`} />
+	{/each}
+{/snippet}
+
 <main>
 	<p><a href={resolve('/tunes')}>Tunes</a></p>
 
@@ -109,16 +115,12 @@
 			{#if tune.sourceChartStatus === 'draft'}
 				<section class="scan">
 					<h2>Scan</h2>
-					{#each Array.from({ length: tune.scanPageCount }, (_, i) => i) as page (page)}
-						<img src={`/api/tunes/${tune.id}/scan/${page}`} alt={`Scan page ${page + 1}`} />
-					{/each}
+					{@render scanPages()}
 				</section>
 			{:else}
 				<details class="scan">
 					<summary>Scan</summary>
-					{#each Array.from({ length: tune.scanPageCount }, (_, i) => i) as page (page)}
-						<img src={`/api/tunes/${tune.id}/scan/${page}`} alt={`Scan page ${page + 1}`} />
-					{/each}
+					{@render scanPages()}
 				</details>
 			{/if}
 		{/if}
