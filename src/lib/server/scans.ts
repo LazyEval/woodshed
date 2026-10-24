@@ -5,6 +5,7 @@ import type { ExtractionModel, ScanImage } from '#lib/server/ai.js';
 import type { Deps } from '#lib/server/deps.js';
 import { tunes } from '#lib/server/db/schema.js';
 import { jsonError, tuneNotFound } from '#lib/server/http.js';
+import { archive, listLiveSimplifiedCharts } from '#lib/server/simplified-charts.js';
 
 export const MAX_SCAN_PAGES = 12;
 export const MAX_PAGE_BYTES = 5 * 1024 * 1024;
@@ -178,6 +179,64 @@ export async function importTune(request: Request, deps: Deps): Promise<Response
 		await deleteScanPages(deps, id, pages.length).catch(() => undefined);
 		throw error;
 	}
+}
+
+export async function replaceSourceChart(
+	request: Request,
+	deps: Deps,
+	id: string
+): Promise<Response> {
+	let form: FormData;
+	try {
+		form = await request.formData();
+	} catch {
+		return jsonError('Request body must be form data.', 400);
+	}
+	const pages = await readPages(form);
+	if (pages instanceof Response) return pages;
+	const model = parseModel(form.get('model'));
+	if (!model) return jsonError('Model must be sonnet or opus.', 400);
+
+	const tune = await deps.db.query.tunes.findFirst({ where: eq(tunes.id, id) });
+	if (!tune) return tuneNotFound();
+
+	const liveCharts = await listLiveSimplifiedCharts(deps, id);
+	if (liveCharts.length > 0 && form.get('confirmArchive') !== 'true') {
+		return Response.json(
+			{
+				error: 'Replacing the Source Chart archives the Simplified Charts. Confirm to continue.',
+				simplifiedCharts: liveCharts.map((chart) => chart.name)
+			},
+			{ status: 409 }
+		);
+	}
+
+	const extraction = await extractWithRetry(deps, pages, model);
+	if ('failure' in extraction) return extraction.failure;
+
+	const now = deps.clock.now().getTime();
+	await storePages(deps, id, pages);
+	const replaceChart = deps.db
+		.update(tunes)
+		.set({
+			sourceChart: extraction.value.chart,
+			sourceChartStatus: 'draft',
+			verifiedAt: null,
+			verifiedChart: null,
+			scanPageCount: pages.length,
+			updatedAt: now
+		})
+		.where(eq(tunes.id, id))
+		.returning();
+	const [[replaced]] = await deps.db.batch([
+		replaceChart,
+		...liveCharts.map((chart) => archive(deps, chart, now))
+	]);
+	const orphaned = Array.from({ length: Math.max(0, tune.scanPageCount - pages.length) }, (_, i) =>
+		scanKey(id, pages.length + i)
+	);
+	if (orphaned.length) await deps.scans.delete(orphaned).catch(() => undefined);
+	return Response.json(replaced);
 }
 
 export async function reextractChart(request: Request, deps: Deps, id: string): Promise<Response> {

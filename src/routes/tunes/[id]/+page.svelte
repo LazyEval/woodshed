@@ -7,6 +7,7 @@
 	import ChartGrid from '#lib/components/ChartGrid.svelte';
 	import ChartTabs from '#lib/components/ChartTabs.svelte';
 	import SimplifiedChartPanel from '#lib/components/SimplifiedChartPanel.svelte';
+	import ScanImport from '#lib/components/ScanImport.svelte';
 	import PracticeLog from '#lib/components/PracticeLog.svelte';
 	import type { Chart } from '#lib/chart.js';
 
@@ -96,6 +97,8 @@
 		const result = await send(`/api/tunes/${tune.id}/reopen`, 'POST');
 		if (result.ok) await invalidateAll();
 	}
+
+	let replacing = $state(false);
 
 	let selectedChartId = $state<string | null>(null);
 	let editingSimplified = $state(false);
@@ -203,6 +206,13 @@
 	<PracticeLog {tune} sessions={data.sessions} />
 
 	<hr />
+	{#if replacing}
+		<h2>Replace Source Chart</h2>
+		<ScanImport tuneId={tune.id} ondone={() => (replacing = false)} />
+		<button type="button" onclick={() => (replacing = false)}>Cancel</button>
+	{:else}
+		<button type="button" onclick={() => (replacing = true)}>Replace Source Chart</button>
+	{/if}
 	<button type="button" onclick={remove}>Delete tune</button>
 </main>
 

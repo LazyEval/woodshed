@@ -1,7 +1,9 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { resizeToJpeg } from '#lib/image.js';
+
+	let { tuneId, ondone }: { tuneId?: string; ondone?: () => void } = $props();
 
 	let pages = $state<File[]>([]);
 	let running = $state(false);
@@ -28,22 +30,40 @@
 		pages = pages.filter((_, i) => i !== index);
 	}
 
+	async function post(fields: Record<string, string>) {
+		const form = new FormData();
+		for (const [i, file] of pages.entries()) {
+			form.append('pages', await resizeToJpeg(file), `page-${i + 1}.jpg`);
+		}
+		for (const [name, value] of Object.entries(fields)) form.append(name, value);
+		const url = tuneId ? `/api/tunes/${tuneId}/replace` : '/api/tunes/import';
+		const response = await fetch(url, { method: 'POST', body: form });
+		const text = await response.text();
+		return { response, body: text ? JSON.parse(text) : null };
+	}
+
 	async function submit(fields: Record<string, string>) {
 		running = true;
 		error = null;
 		failed = false;
 		try {
-			const form = new FormData();
-			for (const [i, file] of pages.entries()) {
-				form.append('pages', await resizeToJpeg(file), `page-${i + 1}.jpg`);
+			let { response, body } = await post(fields);
+			if (!response.ok && Array.isArray(body?.simplifiedCharts)) {
+				const names = body.simplifiedCharts.map((name: string) => `"${name}"`).join(', ');
+				if (!confirm(`Replacing the Source Chart archives these Simplified Charts: ${names}.`)) {
+					return;
+				}
+				({ response, body } = await post({ ...fields, confirmArchive: 'true' }));
 			}
-			for (const [name, value] of Object.entries(fields)) form.append(name, value);
-			const response = await fetch('/api/tunes/import', { method: 'POST', body: form });
-			const text = await response.text();
-			const body = text ? JSON.parse(text) : null;
 			if (!response.ok) {
 				error = body?.error ?? 'Import failed.';
 				failed = true;
+				return;
+			}
+			if (tuneId) {
+				pages = [];
+				await invalidateAll();
+				ondone?.();
 				return;
 			}
 			await goto(resolve('/tunes/[id]', { id: body.id }));
@@ -90,9 +110,11 @@
 	{#if error}<p role="alert">{error}</p>{/if}
 	{#if failed}
 		<button type="button" onclick={() => submit({ model: 'opus' })}>Retry with Opus</button>
-		<button type="button" onclick={() => submit({ mode: 'manual' })}>
-			Keep the Scan and build the chart by hand
-		</button>
+		{#if !tuneId}
+			<button type="button" onclick={() => submit({ mode: 'manual' })}>
+				Keep the Scan and build the chart by hand
+			</button>
+		{/if}
 	{/if}
 </section>
 
