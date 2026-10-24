@@ -27,6 +27,7 @@ export const tunes = sqliteTable('tunes', {
 	verifiedChart: text('verified_chart', { mode: 'json' }).$type<Chart>(),
 	shelved: integer('shelved', { mode: 'boolean' }).notNull().default(false),
 	scanPageCount: integer('scan_page_count').notNull().default(0),
+	scanVersion: integer('scan_version').notNull().default(0),
 	createdAt: integer('created_at').notNull(),
 	updatedAt: integer('updated_at').notNull()
 });

@@ -23,6 +23,7 @@ export interface TuneDetail extends TuneSummary, Schedule {
 	sourceChart: Chart;
 	simplifiedCharts: SimplifiedChartView[];
 	scanPageCount: number;
+	scanVersion: number;
 	verifiedAt: number | null;
 }
 

@@ -120,7 +120,10 @@
 
 {#snippet scanPages()}
 	{#each Array.from({ length: tune.scanPageCount }, (_, i) => i) as page (page)}
-		<img src={`/api/tunes/${tune.id}/scan/${page}`} alt={`Scan page ${page + 1}`} />
+		<img
+			src={`/api/tunes/${tune.id}/scan/${page}?v=${tune.scanVersion}`}
+			alt={`Scan page ${page + 1}`}
+		/>
 	{/each}
 {/snippet}
 

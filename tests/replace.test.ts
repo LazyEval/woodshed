@@ -80,6 +80,7 @@ async function verifiedTuneWithCharts(app: TestApp, names: string[]) {
 			app.deps,
 			tune.id
 		);
+		app.clock.advance(1000);
 	}
 	app.ai.extractRequests.length = 0;
 	app.ai.extractions = [newExtraction];
@@ -138,6 +139,17 @@ describe('Replacement of a Source Chart', () => {
 		const tune = await tuneOf(app, id);
 		expect(tune.simplifiedCharts.map((c) => c.name)).toEqual(['Shells', 'Roots']);
 		expect(tune.simplifiedCharts.every((c) => c.archivedAt !== null)).toBe(true);
+	});
+
+	it('leaves only the new Scan in storage across repeated Replacements', async () => {
+		const app = createTestApp();
+		const id = await verifiedTuneWithCharts(app, []);
+
+		await replace(app, id, [page('second-1'), page('second-2'), page('second-3')]);
+		await replace(app, id, [page('third-1')]);
+
+		expect((await env.SCANS.list()).objects).toHaveLength(1);
+		expect(await pageText(app, id, 0)).toBe('third-1');
 	});
 
 	it('needs no confirmation when there are no live Simplified Charts', async () => {

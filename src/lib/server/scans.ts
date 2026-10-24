@@ -23,7 +23,8 @@ interface Extracted {
 
 type Extraction = { value: Extracted } | { failure: Response };
 
-const scanKey = (tuneId: string, page: number) => `scans/${tuneId}/${page}`;
+const scanKey = (tuneId: string, version: number, page: number) =>
+	version === 0 ? `scans/${tuneId}/${page}` : `scans/${tuneId}/v${version}/${page}`;
 
 function parseModel(value: unknown): ExtractionModel | null {
 	if (value === undefined || value === null || value === '' || value === 'sonnet') return 'sonnet';
@@ -117,10 +118,15 @@ async function readUpload(
 	return pages instanceof Response ? pages : { form, pages };
 }
 
-async function storePages(deps: Deps, tuneId: string, pages: ScanImage[]): Promise<void> {
+async function storePages(
+	deps: Deps,
+	tuneId: string,
+	version: number,
+	pages: ScanImage[]
+): Promise<void> {
 	await Promise.all(
 		pages.map((page, i) =>
-			deps.scans.put(scanKey(tuneId, i), page.bytes, {
+			deps.scans.put(scanKey(tuneId, version, i), page.bytes, {
 				httpMetadata: { contentType: page.mediaType }
 			})
 		)
@@ -130,19 +136,22 @@ async function storePages(deps: Deps, tuneId: string, pages: ScanImage[]): Promi
 export async function deleteScanPages(
 	deps: Deps,
 	tuneId: string,
-	count: number,
-	fromPage = 0
+	version: number,
+	count: number
 ): Promise<void> {
-	if (count <= fromPage) return;
-	await deps.scans.delete(
-		Array.from({ length: count - fromPage }, (_, i) => scanKey(tuneId, fromPage + i))
-	);
+	if (count === 0) return;
+	await deps.scans.delete(Array.from({ length: count }, (_, i) => scanKey(tuneId, version, i)));
 }
 
-async function loadPages(deps: Deps, tuneId: string, count: number): Promise<ScanImage[]> {
+async function loadPages(
+	deps: Deps,
+	tuneId: string,
+	version: number,
+	count: number
+): Promise<ScanImage[]> {
 	return Promise.all(
 		Array.from({ length: count }, async (_, i) => {
-			const object = await deps.scans.get(scanKey(tuneId, i));
+			const object = await deps.scans.get(scanKey(tuneId, version, i));
 			if (!object) throw new Error(`Scan page ${i} is missing`);
 			return {
 				bytes: new Uint8Array(await object.arrayBuffer()),
@@ -175,7 +184,7 @@ export async function importTune(request: Request, deps: Deps): Promise<Response
 	const id = crypto.randomUUID();
 	const now = deps.clock.now().getTime();
 	try {
-		await storePages(deps, id, pages);
+		await storePages(deps, id, 0, pages);
 		const [tune] = await deps.db
 			.insert(tunes)
 			.values({
@@ -191,7 +200,7 @@ export async function importTune(request: Request, deps: Deps): Promise<Response
 			.returning();
 		return Response.json(tune, { status: 201 });
 	} catch (error) {
-		await deleteScanPages(deps, id, pages.length).catch(() => undefined);
+		await deleteScanPages(deps, id, 0, pages.length).catch(() => undefined);
 		throw error;
 	}
 }
@@ -225,7 +234,8 @@ export async function replaceSourceChart(
 	if ('failure' in extraction) return extraction.failure;
 
 	const now = deps.clock.now().getTime();
-	await storePages(deps, id, pages);
+	const version = tune.scanVersion + 1;
+	await storePages(deps, id, version, pages);
 	const replaceChart = deps.db
 		.update(tunes)
 		.set({
@@ -234,16 +244,26 @@ export async function replaceSourceChart(
 			verifiedAt: null,
 			verifiedChart: null,
 			scanPageCount: pages.length,
+			scanVersion: version,
 			updatedAt: now
 		})
-		.where(eq(tunes.id, id))
+		.where(and(eq(tunes.id, id), eq(tunes.scanVersion, tune.scanVersion)))
 		.returning();
-	const [[replaced]] = await deps.db.batch([
-		replaceChart,
-		...liveCharts.map((chart) => archive(deps, chart, now))
-	]);
-	await deleteScanPages(deps, id, tune.scanPageCount, pages.length).catch(() => undefined);
-	return Response.json(replaced);
+	try {
+		const [[replaced]] = await deps.db.batch([
+			replaceChart,
+			...liveCharts.map((chart) => archive(deps, chart, now))
+		]);
+		if (!replaced) {
+			await deleteScanPages(deps, id, version, pages.length).catch(() => undefined);
+			return jsonError('The Source Chart was replaced concurrently. Try again.', 409);
+		}
+		await deleteScanPages(deps, id, tune.scanVersion, tune.scanPageCount).catch(() => undefined);
+		return Response.json(replaced);
+	} catch (error) {
+		await deleteScanPages(deps, id, version, pages.length).catch(() => undefined);
+		throw error;
+	}
 }
 
 export async function reextractChart(request: Request, deps: Deps, id: string): Promise<Response> {
@@ -260,7 +280,7 @@ export async function reextractChart(request: Request, deps: Deps, id: string): 
 
 	const extraction = await extractWithRetry(
 		deps,
-		await loadPages(deps, id, tune.scanPageCount),
+		await loadPages(deps, id, tune.scanVersion, tune.scanPageCount),
 		model
 	);
 	if ('failure' in extraction) return extraction.failure;
@@ -276,7 +296,11 @@ export async function reextractChart(request: Request, deps: Deps, id: string): 
 export async function getScanPage(deps: Deps, id: string, page: string): Promise<Response> {
 	const index = Number(page);
 	if (!Number.isInteger(index) || index < 0) return jsonError('Page not found.', 404);
-	const object = await deps.scans.get(scanKey(id, index));
+	const tune = await deps.db.query.tunes.findFirst({
+		columns: { scanVersion: true },
+		where: eq(tunes.id, id)
+	});
+	const object = tune && (await deps.scans.get(scanKey(id, tune.scanVersion, index)));
 	if (!object) return jsonError('Page not found.', 404);
 	return new Response(object.body, {
 		headers: {
