@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sameBarGrid, type Bar, type Chart } from '#lib/chart.js';
+import { differingBars, sameBarGrid, type Bar, type Chart } from '#lib/chart.js';
 
 const bar = (extra: Partial<Bar> = {}): Bar => ({ chords: [{ beat: 1, symbol: 'C' }], ...extra });
 
@@ -67,5 +67,41 @@ describe('sameBarGrid', () => {
 
 		expect(sameBarGrid(base, waltz)).toBe(false);
 		expect(sameBarGrid(waltz, waltzOnlyHere)).toBe(false);
+	});
+});
+
+describe('differingBars', () => {
+	const source = chart(
+		['A', [bar({ repeatStart: true }), bar(), bar({ repeatEnd: true })]],
+		['B', [bar()]]
+	);
+
+	it('lists no bars for identical chords', () => {
+		expect(differingBars(source, structuredClone(source))).toEqual([]);
+	});
+
+	it('lists flat bar indexes across sections where chords differ', () => {
+		const edited = structuredClone(source);
+		edited.sections[0].bars[1].chords = [{ beat: 1, symbol: 'G7' }];
+		edited.sections[1].bars[0].chords = [];
+
+		expect(differingBars(source, edited)).toEqual([1, 3]);
+	});
+
+	it('notices a changed beat, symbol or chord count', () => {
+		const moved = structuredClone(source);
+		moved.sections[0].bars[0].chords = [{ beat: 2, symbol: 'C' }];
+		const added = structuredClone(source);
+		added.sections[0].bars[2].chords.push({ beat: 3, symbol: 'G7' });
+
+		expect(differingBars(source, moved)).toEqual([0]);
+		expect(differingBars(source, added)).toEqual([2]);
+	});
+
+	it('ignores non-chord bar marks', () => {
+		const marked = structuredClone(source);
+		marked.sections[0].bars[1].ending = 1;
+
+		expect(differingBars(source, marked)).toEqual([]);
 	});
 });

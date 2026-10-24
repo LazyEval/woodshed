@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm';
-import { isRecord, sameBarGrid, validateChart, type Chart } from '#lib/chart.js';
+import { isRecord, sameBarGrid, validateChart } from '#lib/chart.js';
 import type { Result } from '#lib/result.js';
 import type { Deps } from '#lib/server/deps.js';
 import { simplifiedCharts, tunes } from '#lib/server/db/schema.js';
@@ -13,10 +13,6 @@ function parseName(value: unknown): Result<string> {
 	if (typeof value !== 'string' || !value.trim()) return { error: 'Name is required.' };
 	if (value.trim().length > MAX_NAME_LENGTH) return { error: 'Name is too long.' };
 	return { value: value.trim() };
-}
-
-function withoutKeyCenters({ sections }: Chart): Chart {
-	return { sections };
 }
 
 export function listSimplifiedCharts(deps: Deps, tuneId: string) {
@@ -51,7 +47,7 @@ export async function createSimplifiedChart(
 			tuneId,
 			name: name.value,
 			origin: 'manual',
-			chart: withoutKeyCenters(tune.sourceChart),
+			chart: tune.sourceChart,
 			createdAt: now,
 			updatedAt: now
 		})
@@ -98,7 +94,10 @@ export async function updateSimplifiedChart(
 				400
 			);
 		}
-		changes.chart = withoutKeyCenters(validated.value);
+		changes.chart = {
+			...validated.value,
+			...(existing.chart.keyCenters && { keyCenters: existing.chart.keyCenters })
+		};
 	}
 
 	const [saved] = await deps.db

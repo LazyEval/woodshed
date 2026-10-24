@@ -134,7 +134,8 @@
 		}
 	}
 	.differs {
-		outline: 3px solid orange;
+		--differs-color: hsl(30 95% 50%);
+		outline: 3px solid var(--differs-color);
 		outline-offset: -3px;
 	}
 	.legend {

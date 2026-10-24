@@ -5,8 +5,10 @@
 	import TuneFields from '#lib/components/TuneFields.svelte';
 	import ChartEditor from '#lib/components/ChartEditor.svelte';
 	import ChartGrid from '#lib/components/ChartGrid.svelte';
+	import ChartTabs from '#lib/components/ChartTabs.svelte';
+	import SimplifiedChartPanel from '#lib/components/SimplifiedChartPanel.svelte';
 	import PracticeLog from '#lib/components/PracticeLog.svelte';
-	import { differingBars, type Chart } from '#lib/chart.js';
+	import type { Chart } from '#lib/chart.js';
 
 	let { data } = $props();
 	const tune = $derived(data.tune);
@@ -80,70 +82,10 @@
 
 	let selectedChartId = $state<string | null>(null);
 	let editingSimplified = $state(false);
-	let simplifiedError = $state<string | null>(null);
-	let savingSimplified = $state(false);
 
 	const selectedSimplified = $derived(
 		tune.simplifiedCharts.find((chart) => chart.id === selectedChartId) ?? null
 	);
-
-	const simplifiedPath = (id: string) => `/api/tunes/${tune.id}/simplified-charts/${id}`;
-
-	function select(id: string | null) {
-		selectedChartId = id;
-		editingSimplified = false;
-		simplifiedError = null;
-	}
-
-	async function createSimplified() {
-		const name = prompt('Name for the Simplified Chart');
-		if (!name) return;
-		const result = await send<{ id: string; error?: string }>(
-			`/api/tunes/${tune.id}/simplified-charts`,
-			'POST',
-			{ name }
-		);
-		if (!result.ok) {
-			simplifiedError = result.body.error ?? 'Could not create the Simplified Chart.';
-			return;
-		}
-		await invalidateAll();
-		select(result.body.id);
-	}
-
-	async function saveSimplified(chart: Chart) {
-		if (!selectedSimplified) return;
-		savingSimplified = true;
-		simplifiedError = null;
-		const result = await send(simplifiedPath(selectedSimplified.id), 'PUT', { chart });
-		savingSimplified = false;
-		if (!result.ok) {
-			simplifiedError = result.body.error;
-			return;
-		}
-		editingSimplified = false;
-		await invalidateAll();
-	}
-
-	async function renameSimplified() {
-		if (!selectedSimplified) return;
-		const name = prompt('Rename Simplified Chart', selectedSimplified.name);
-		if (!name) return;
-		const result = await send(simplifiedPath(selectedSimplified.id), 'PUT', { name });
-		if (!result.ok) simplifiedError = result.body.error;
-		else await invalidateAll();
-	}
-
-	async function removeSimplified() {
-		if (!selectedSimplified || !confirm(`Delete "${selectedSimplified.name}"?`)) return;
-		const result = await send(simplifiedPath(selectedSimplified.id), 'DELETE');
-		if (!result.ok) {
-			simplifiedError = result.body.error;
-			return;
-		}
-		select(null);
-		await invalidateAll();
-	}
 
 	async function remove() {
 		if (!confirm(`Delete "${tune.title}"? This cannot be undone.`)) return;
@@ -195,53 +137,22 @@
 
 		<section>
 			{#if tune.simplifiedCharts.length || tune.sourceChartStatus === 'verified'}
-				<div role="tablist" class="chart-tabs">
-					<button
-						type="button"
-						role="tab"
-						aria-selected={selectedSimplified === null}
-						onclick={() => select(null)}>Source</button
-					>
-					{#each tune.simplifiedCharts as chart (chart.id)}
-						<button
-							type="button"
-							role="tab"
-							aria-selected={selectedSimplified?.id === chart.id}
-							onclick={() => select(chart.id)}>{chart.name}</button
-						>
-					{/each}
-					{#if tune.sourceChartStatus === 'verified'}
-						<button type="button" onclick={createSimplified}>+ Simplified Chart</button>
-					{/if}
-				</div>
+				<ChartTabs
+					{tune}
+					bind:selectedId={selectedChartId}
+					locked={editingChart || editingSimplified}
+				/>
 			{/if}
 
 			{#if selectedSimplified}
-				<h2>
-					{selectedSimplified.name}
-					<small>Simplified Chart · {selectedSimplified.origin}</small>
-				</h2>
-				{#if editingSimplified}
-					{#key selectedSimplified.id}
-						<ChartEditor
-							chart={selectedSimplified.chart}
-							saving={savingSimplified}
-							error={simplifiedError}
-							chordsOnly
-							onsave={saveSimplified}
-						/>
-					{/key}
-					<button type="button" onclick={() => (editingSimplified = false)}>Cancel</button>
-				{:else}
-					<ChartGrid
-						chart={selectedSimplified.chart}
-						highlightedBars={differingBars(tune.sourceChart, selectedSimplified.chart)}
+				{#key selectedSimplified.id}
+					<SimplifiedChartPanel
+						{tune}
+						simplified={selectedSimplified}
+						bind:editing={editingSimplified}
+						ondeleted={() => (selectedChartId = null)}
 					/>
-					<button type="button" onclick={() => (editingSimplified = true)}>Edit chords</button>
-					<button type="button" onclick={renameSimplified}>Rename</button>
-					<button type="button" onclick={removeSimplified}>Delete</button>
-					{#if simplifiedError}<p role="alert">{simplifiedError}</p>{/if}
-				{/if}
+				{/key}
 			{:else}
 				<h2>
 					Source Chart
@@ -268,7 +179,6 @@
 					{/if}
 				{/if}
 			{/if}
-			{#if !selectedSimplified && simplifiedError}<p role="alert">{simplifiedError}</p>{/if}
 		</section>
 	</div>
 
@@ -283,16 +193,6 @@
 		max-width: 30rem;
 		margin: 0 auto;
 		padding: 1rem;
-	}
-	.chart-tabs {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.25rem;
-		margin-bottom: 0.5rem;
-	}
-	.chart-tabs [aria-selected='true'] {
-		font-weight: 700;
-		text-decoration: underline;
 	}
 	form {
 		display: grid;

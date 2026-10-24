@@ -103,7 +103,7 @@ describe('simplified charts', () => {
 
 		expect(response.status).toBe(201);
 		expect(chart).toMatchObject({ name: 'Shell voicings', origin: 'manual' });
-		expect(chart.chart.sections).toEqual(sourceChart.sections);
+		expect(chart.chart).toEqual(sourceChart);
 		expect((await tuneOf(app, tuneId)).simplifiedCharts.map((c) => c.id)).toEqual([chart.id]);
 	});
 
@@ -156,6 +156,7 @@ describe('simplified charts', () => {
 		const saved = (await tuneOf(app, tuneId)).simplifiedCharts[0];
 		expect(saved.chart.sections[0].bars[0].chords).toEqual([{ beat: 1, symbol: 'G7' }]);
 		expect(saved.chart.sections[0].bars[0].repeatStart).toBe(true);
+		expect(saved.chart.keyCenters).toEqual(sourceChart.keyCenters);
 	});
 
 	it('rejects invalid chords', async () => {
