@@ -1,8 +1,12 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
-	import { sendJson } from '#lib/api.js';
+	import { ApiAction } from '#lib/api-action.svelte.js';
 	import RatingButtons from '#lib/components/RatingButtons.svelte';
-	import type { PracticeSession, Rating } from '#lib/rotation.js';
+	import {
+		PRACTICED_CHARTS,
+		type PracticeSession,
+		type PracticedChart,
+		type Rating
+	} from '#lib/rotation.js';
 	import type { TuneDetail } from '#lib/tune.js';
 
 	interface Props {
@@ -12,40 +16,28 @@
 
 	let { tune, sessions }: Props = $props();
 
-	let practicedOn = $state('');
-	let chart = $state('');
-	let busy = $state(false);
-	let error = $state<string | null>(null);
+	const CHART_LABELS: Record<PracticedChart, string> = { source: 'Source Chart' };
 
-	async function run(path: string, method: string, body?: unknown) {
-		busy = true;
-		error = null;
-		const result = await sendJson(path, method, body);
-		busy = false;
-		if (!result.ok) {
-			error = result.body.error;
-			return false;
-		}
-		await invalidateAll();
-		return true;
-	}
+	let practicedOn = $state('');
+	let chart = $state<PracticedChart | null>(null);
+	const action = new ApiAction();
 
 	async function log(rating: Rating) {
-		const logged = await run(`/api/tunes/${tune.id}/sessions`, 'POST', {
+		const logged = await action.run(`/api/tunes/${tune.id}/sessions`, 'POST', {
 			rating,
 			practicedOn: practicedOn || undefined,
-			chart: chart || undefined
+			chart
 		});
 		if (logged) practicedOn = '';
 	}
 
 	async function remove(session: PracticeSession) {
 		if (!confirm(`Delete the ${session.rating} session on ${session.practicedOn}?`)) return;
-		await run(`/api/tunes/${tune.id}/sessions/${session.id}`, 'DELETE');
+		await action.run(`/api/tunes/${tune.id}/sessions/${session.id}`, 'DELETE');
 	}
 
 	const toggleShelved = () =>
-		run(`/api/tunes/${tune.id}/${tune.shelved ? 'unshelve' : 'shelve'}`, 'POST');
+		action.run(`/api/tunes/${tune.id}/${tune.shelved ? 'unshelve' : 'shelve'}`, 'POST');
 </script>
 
 <h2>Rotation <small>{tune.shelved ? 'Shelved' : 'Active'}</small></h2>
@@ -62,7 +54,7 @@
 		{/if}
 	</dd>
 </dl>
-<button type="button" disabled={busy} onclick={toggleShelved}>
+<button type="button" disabled={action.busy} onclick={toggleShelved}>
 	{tune.shelved ? 'Un-shelve' : 'Shelve'}
 </button>
 
@@ -72,14 +64,16 @@
 	<label>
 		Chart
 		<select bind:value={chart}>
-			<option value="">Not recorded</option>
-			<option value="Source Chart">Source Chart</option>
+			<option value={null}>Not recorded</option>
+			{#each PRACTICED_CHARTS as option (option)}
+				<option value={option}>{CHART_LABELS[option]}</option>
+			{/each}
 		</select>
 	</label>
-	<RatingButtons disabled={busy} onrate={log} />
+	<RatingButtons disabled={action.busy} onrate={log} />
 	<small>Leave the date empty for today.</small>
 </div>
-{#if error}<p role="alert">{error}</p>{/if}
+{#if action.error}<p role="alert">{action.error}</p>{/if}
 
 {#if sessions.length > 0}
 	<h3>Practice Sessions</h3>
@@ -91,7 +85,7 @@
 						? ` · ${session.chart}`
 						: ''}</span
 				>
-				<button type="button" disabled={busy} onclick={() => remove(session)}>Delete</button>
+				<button type="button" disabled={action.busy} onclick={() => remove(session)}>Delete</button>
 			</li>
 		{/each}
 	</ul>

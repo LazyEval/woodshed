@@ -3,7 +3,10 @@ import type { TuneSummary } from '#lib/tune.js';
 export type Rating = 'shaky' | 'ok' | 'solid';
 export const RATINGS: readonly Rating[] = ['shaky', 'ok', 'solid'];
 
-export type CalendarDate = string;
+export type PracticedChart = 'source';
+export const PRACTICED_CHARTS: readonly PracticedChart[] = ['source'];
+
+export type CalendarDate = string & { readonly __brand: 'CalendarDate' };
 
 const FIRST_INTERVAL_DAYS: Record<Rating, number> = { shaky: 1, ok: 3, solid: 7 };
 const OK_GROWTH = 1.5;
@@ -34,7 +37,7 @@ export interface PracticeSession {
 	id: string;
 	practicedOn: CalendarDate;
 	rating: Rating;
-	chart: string | null;
+	chart: PracticedChart | null;
 }
 
 export type DueTune = Pick<TuneSummary, 'id' | 'title' | 'composer' | 'key'> &
@@ -43,17 +46,21 @@ export type DueTune = Pick<TuneSummary, 'id' | 'title' | 'composer' | 'key'> &
 		dueForDays: number;
 	};
 
+export function isPracticedChart(value: unknown): value is PracticedChart {
+	return PRACTICED_CHARTS.includes(value as PracticedChart);
+}
+
 export function isRating(value: unknown): value is Rating {
 	return RATINGS.includes(value as Rating);
 }
 
-function toUtcMs(date: CalendarDate): number {
+function toUtcMs(date: string): number {
 	const [, year, month, day] = CALENDAR_DATE_PATTERN.exec(date)!;
 	return Date.UTC(Number(year), Number(month) - 1, Number(day));
 }
 
 function fromUtcMs(ms: number): CalendarDate {
-	return new Date(ms).toISOString().slice(0, 10);
+	return new Date(ms).toISOString().slice(0, 10) as CalendarDate;
 }
 
 export function isCalendarDate(value: unknown): value is CalendarDate {
@@ -80,7 +87,7 @@ export function calendarDateIn(instant: Date, timeZone: string): CalendarDate {
 		day: '2-digit'
 	}).formatToParts(instant);
 	const part = (type: string) => parts.find((p) => p.type === type)!.value;
-	return `${part('year')}-${part('month')}-${part('day')}`;
+	return `${part('year')}-${part('month')}-${part('day')}` as CalendarDate;
 }
 
 function nextDueOn(sessions: RatedSession[]): CalendarDate {

@@ -1,26 +1,15 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { sendJson } from '#lib/api.js';
+	import { ApiAction } from '#lib/api-action.svelte.js';
 	import RatingButtons from '#lib/components/RatingButtons.svelte';
 	import type { Rating } from '#lib/rotation.js';
 
 	let { data } = $props();
 
-	let logging = $state<string | null>(null);
-	let error = $state<string | null>(null);
+	const action = new ApiAction();
 
-	async function logToday(tuneId: string, rating: Rating) {
-		logging = tuneId;
-		error = null;
-		const result = await sendJson(`/api/tunes/${tuneId}/sessions`, 'POST', { rating });
-		logging = null;
-		if (!result.ok) {
-			error = result.body.error;
-			return;
-		}
-		await invalidateAll();
-	}
+	const logToday = (tuneId: string, rating: Rating) =>
+		action.run(`/api/tunes/${tuneId}/sessions`, 'POST', { rating });
 
 	function dueLabel(days: number): string {
 		if (days === 0) return 'Due today';
@@ -37,7 +26,7 @@
 	<p><a href={resolve('/tunes')}>Tunes</a></p>
 
 	<h2>Due</h2>
-	{#if error}<p role="alert">{error}</p>{/if}
+	{#if action.error}<p role="alert">{action.error}</p>{/if}
 	{#if data.due.length === 0}
 		<p>Nothing Due. Nice.</p>
 	{:else}
@@ -51,10 +40,7 @@
 							{#if tune.lastPracticedOn}· last {tune.lastRating} on {tune.lastPracticedOn}{/if}
 						</small>
 					</div>
-					<RatingButtons
-						disabled={logging === tune.id}
-						onrate={(rating) => logToday(tune.id, rating)}
-					/>
+					<RatingButtons disabled={action.busy} onrate={(rating) => logToday(tune.id, rating)} />
 				</li>
 			{/each}
 		</ul>

@@ -100,7 +100,9 @@ describe('practice sessions', () => {
 		['a malformed date', { rating: 'ok', practicedOn: '2025-1-5' }],
 		['an impossible date', { rating: 'ok', practicedOn: '2025-02-30' }],
 		['a future date', { rating: 'ok', practicedOn: '2026-01-02' }],
-		['a non-text chart', { rating: 'ok', chart: 3 }]
+		['an unknown chart', { rating: 'ok', chart: 'banana' }],
+		['a chart given by display name', { rating: 'ok', chart: 'Source Chart' }],
+		['an empty chart', { rating: 'ok', chart: '' }]
 	])('rejects %s', async (_name, body) => {
 		const app = createTestApp();
 		const id = await verifiedTune(app);
@@ -117,16 +119,16 @@ describe('practice session history', () => {
 	it('lists sessions newest first, with the chart practiced from', async () => {
 		const app = createTestApp();
 		const id = await verifiedTune(app);
-		await log(app, id, { practicedOn: '2025-12-01', rating: 'shaky', chart: ' Source Chart ' });
+		await log(app, id, { practicedOn: '2025-12-01', rating: 'shaky', chart: 'source' });
 		await log(app, id, { practicedOn: '2025-12-20', rating: 'solid' });
-		await log(app, id, { practicedOn: '2025-12-10', rating: 'ok', chart: '' });
+		await log(app, id, { practicedOn: '2025-12-10', rating: 'ok', chart: null });
 
 		const sessions = await sessionsOf(app, id);
 
 		expect(sessions).toMatchObject([
 			{ practicedOn: '2025-12-20', rating: 'solid', chart: null },
 			{ practicedOn: '2025-12-10', rating: 'ok', chart: null },
-			{ practicedOn: '2025-12-01', rating: 'shaky', chart: 'Source Chart' }
+			{ practicedOn: '2025-12-01', rating: 'shaky', chart: 'source' }
 		]);
 	});
 

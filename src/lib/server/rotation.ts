@@ -4,10 +4,12 @@ import {
 	calendarDateIn,
 	daysBetween,
 	isCalendarDate,
+	isPracticedChart,
 	isRating,
 	schedule,
 	type CalendarDate,
 	type DueTune,
+	type PracticedChart,
 	type Rating,
 	type RotationStanding
 } from '#lib/rotation.js';
@@ -15,12 +17,10 @@ import type { Deps } from '#lib/server/deps.js';
 import { practiceSessions, tunes } from '#lib/server/db/schema.js';
 import { jsonError, readBody, tuneNotFound } from '#lib/server/http.js';
 
-const MAX_CHART_NAME_LENGTH = 200;
-
 interface NewPracticeSession {
 	practicedOn: CalendarDate;
 	rating: Rating;
-	chart: string | null;
+	chart: PracticedChart | null;
 }
 
 type TuneRow = typeof tunes.$inferSelect;
@@ -45,10 +45,9 @@ function parseSession(
 	if (practicedOn > today) return { error: 'Date cannot be in the future.' };
 
 	const chart = body.chart ?? null;
-	if (chart !== null && typeof chart !== 'string') return { error: 'Chart must be text.' };
-	if (chart && chart.trim().length > MAX_CHART_NAME_LENGTH) return { error: 'Chart is too long.' };
+	if (chart !== null && !isPracticedChart(chart)) return { error: 'Chart must be "source".' };
 
-	return { value: { practicedOn, rating: body.rating, chart: chart?.trim() || null } };
+	return { value: { practicedOn, rating: body.rating, chart } };
 }
 
 function sessionsOf(deps: Deps, tuneId: string) {
