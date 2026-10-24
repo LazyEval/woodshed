@@ -15,6 +15,7 @@
 	let name = $state('');
 	let chosenRuleIds = $state<string[]>([]);
 	let note = $state('');
+	let model = $state<'sonnet' | 'opus'>('sonnet');
 	const action = new ApiAction();
 
 	async function generate(event: SubmitEvent) {
@@ -22,7 +23,8 @@
 		const generated = await action.run(`/api/tunes/${tuneId}/generate`, 'POST', {
 			name,
 			ruleIds: chosenRuleIds,
-			note
+			note,
+			model
 		});
 		if (generated) ondone();
 	}
@@ -42,6 +44,13 @@
 		{/each}
 	</fieldset>
 	<label>Note <textarea bind:value={note} maxlength="1000" rows="2"></textarea></label>
+	<label>
+		Model
+		<select bind:value={model}>
+			<option value="sonnet">Sonnet</option>
+			<option value="opus">Opus (slower, stronger)</option>
+		</select>
+	</label>
 	<button type="submit" disabled={action.busy}>Generate</button>
 	<button type="button" disabled={action.busy} onclick={oncancel}>Cancel</button>
 	{#if action.busy}<p role="status">Generating…</p>{/if}

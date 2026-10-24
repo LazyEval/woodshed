@@ -14,11 +14,11 @@ export interface ScanImage {
 	mediaType: string;
 }
 
-export type ExtractionModel = 'sonnet' | 'opus';
+export type AiModel = 'sonnet' | 'opus';
 
 export interface ExtractionRequest {
 	images: ScanImage[];
-	model: ExtractionModel;
+	model: AiModel;
 	previousProblem?: string;
 }
 
@@ -26,6 +26,7 @@ export interface GenerationRequest {
 	source: Chart;
 	rules: RuleSnapshot[];
 	note: string | null;
+	model: AiModel;
 	previousProblem?: string;
 }
 

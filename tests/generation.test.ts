@@ -123,9 +123,23 @@ describe('generation', () => {
 			{
 				source: sourceChart,
 				rules: [{ name: 'Collapse II V', text: 'II V becomes V' }],
-				note: 'go easy'
+				note: 'go easy',
+				model: 'sonnet'
 			}
 		]);
+	});
+
+	it('passes the chosen model and rejects unknown ones', async () => {
+		const app = createTestApp();
+		const tuneId = await tuneWith(app);
+		app.ai.willGenerate(aiOutput('G7'));
+
+		const chosen = await generate(app, tuneId, { note: 'x', model: 'opus' });
+		const unknown = await generate(app, tuneId, { note: 'x', model: 'gpt' });
+
+		expect(chosen.response.status).toBe(201);
+		expect(app.ai.generateRequests.map((r) => r.model)).toEqual(['opus']);
+		expect(unknown.response.status).toBe(400);
 	});
 
 	it('allows a note alone', async () => {

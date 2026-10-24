@@ -9,12 +9,13 @@ import {
 	type Chart,
 	type RuleSnapshot
 } from '#lib/chart.js';
+import type { AiModel } from '#lib/server/ai.js';
 import type { Result } from '#lib/result.js';
 import type { Deps } from '#lib/server/deps.js';
 import { simplifiedCharts, tunes } from '#lib/server/db/schema.js';
 import { jsonError, readBody, tuneNotFound } from '#lib/server/http.js';
 import { snapshotRules } from '#lib/server/rules.js';
-import { parseName } from '#lib/server/validation.js';
+import { MODEL_ERROR, parseModel, parseName } from '#lib/server/validation.js';
 
 const GENERATION_ATTEMPTS = 2;
 const MAX_NOTE_LENGTH = 1000;
@@ -30,6 +31,7 @@ interface GenerationInput {
 	rules: RuleSnapshot[];
 	note: string | null;
 	name: string;
+	model: AiModel;
 }
 
 function readReasons(raw: unknown, barCount: number): Result<BarReason[]> {
@@ -93,7 +95,10 @@ async function parseRequest(request: Request, deps: Deps): Promise<Result<Genera
 	const name = hasName ? parseName(body.value.name) : { value: DEFAULT_NAME };
 	if ('error' in name) return name;
 
-	return { value: { rules: snapshot.value, note: note || null, name: name.value } };
+	const model = parseModel(body.value.model);
+	if (!model) return { error: MODEL_ERROR };
+
+	return { value: { rules: snapshot.value, note: note || null, name: name.value, model } };
 }
 
 export async function generateSimplifiedChart(
@@ -103,7 +108,7 @@ export async function generateSimplifiedChart(
 ): Promise<Response> {
 	const parsed = await parseRequest(request, deps);
 	if ('error' in parsed) return jsonError(parsed.error, 400);
-	const { rules: snapshot, note, name } = parsed.value;
+	const { rules: snapshot, note, name, model } = parsed.value;
 
 	const tune = await deps.db.query.tunes.findFirst({ where: eq(tunes.id, tuneId) });
 	if (!tune) return tuneNotFound();
@@ -119,6 +124,7 @@ export async function generateSimplifiedChart(
 				source: tune.sourceChart,
 				rules: snapshot,
 				note,
+				model,
 				...(previousProblem && { previousProblem })
 			});
 		} catch {

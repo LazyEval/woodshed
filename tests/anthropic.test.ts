@@ -43,12 +43,14 @@ describe('anthropic client generate', () => {
 			source,
 			rules: [{ name: 'Collapse', text: 'VI becomes I' }],
 			note: 'go easy',
+			model: 'opus',
 			previousProblem: 'bad grid'
 		});
 
 		expect(result).toEqual(output);
 		const [request] = sent;
 		expect(request.headers['x-api-key']).toBe('key');
+		expect(request.body.model).toBe('claude-opus-5-5');
 		expect(request.body.output_config.format.type).toBe('json_schema');
 		const prompt = request.body.messages[0].content[0].text;
 		expect(prompt).toContain(JSON.stringify(source));
@@ -61,7 +63,7 @@ describe('anthropic client generate', () => {
 		const { fetcher } = fakeFetch(() => textResponse('not json'));
 		const client = createAnthropicAiClient('key', fetcher);
 
-		const result = await client.generate({ source, rules: [], note: 'x' });
+		const result = await client.generate({ source, rules: [], note: 'x', model: 'sonnet' });
 
 		expect(result).toMatch(/not valid JSON/);
 	});
@@ -72,7 +74,9 @@ describe('anthropic client generate', () => {
 		);
 		const client = createAnthropicAiClient('key', fetcher);
 
-		await expect(client.generate({ source, rules: [], note: 'x' })).rejects.toThrow(/529/);
+		await expect(
+			client.generate({ source, rules: [], note: 'x', model: 'sonnet' })
+		).rejects.toThrow(/529/);
 	});
 });
 

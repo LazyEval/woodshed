@@ -1,10 +1,11 @@
 import { and, eq } from 'drizzle-orm';
 import { emptyChart, isRecord, isValidKey, validateChart, type Chart } from '#lib/chart.js';
 import type { Result } from '#lib/result.js';
-import type { ExtractionModel, ScanImage } from '#lib/server/ai.js';
+import type { AiModel, ScanImage } from '#lib/server/ai.js';
 import type { Deps } from '#lib/server/deps.js';
 import { tunes } from '#lib/server/db/schema.js';
 import { jsonError, tuneNotFound } from '#lib/server/http.js';
+import { MODEL_ERROR, parseModel } from '#lib/server/validation.js';
 import { CONFIRM_ARCHIVE } from '#lib/tune.js';
 import { archive, listLiveSimplifiedCharts } from '#lib/server/simplified-charts.js';
 
@@ -26,11 +27,6 @@ type Extraction = { value: Extracted } | { failure: Response };
 
 const scanKey = (tuneId: string, version: number, page: number) =>
 	version === 0 ? `scans/${tuneId}/${page}` : `scans/${tuneId}/v${version}/${page}`;
-
-function parseModel(value: unknown): ExtractionModel | null {
-	if (value === undefined || value === null || value === '' || value === 'sonnet') return 'sonnet';
-	return value === 'opus' ? 'opus' : null;
-}
 
 function cleanText(value: unknown): string | null {
 	if (typeof value !== 'string') return null;
@@ -69,7 +65,7 @@ function readExtracted(raw: unknown): Result<Extracted> {
 async function extractWithRetry(
 	deps: Deps,
 	images: ScanImage[],
-	model: ExtractionModel
+	model: AiModel
 ): Promise<Extraction> {
 	let previousProblem: string | undefined;
 	for (let attempt = 0; attempt < EXTRACTION_ATTEMPTS; attempt++) {
@@ -168,7 +164,7 @@ export async function importTune(request: Request, deps: Deps): Promise<Response
 	const { form, pages } = upload;
 	const manual = form.get('mode') === 'manual';
 	const model = parseModel(form.get('model'));
-	if (!model) return jsonError('Model must be sonnet or opus.', 400);
+	if (!model) return jsonError(MODEL_ERROR, 400);
 
 	let fields: Extracted = {
 		title: cleanText(form.get('title')) ?? 'Untitled',
@@ -225,7 +221,7 @@ export async function replaceSourceChart(
 	if (upload instanceof Response) return upload;
 	const { form, pages } = upload;
 	const model = parseModel(form.get('model'));
-	if (!model) return jsonError('Model must be sonnet or opus.', 400);
+	if (!model) return jsonError(MODEL_ERROR, 400);
 
 	const tune = await deps.db.query.tunes.findFirst({ where: eq(tunes.id, id) });
 	if (!tune) return tuneNotFound();
@@ -280,7 +276,7 @@ export async function replaceSourceChart(
 export async function reextractChart(request: Request, deps: Deps, id: string): Promise<Response> {
 	const body: unknown = await request.json().catch(() => undefined);
 	const model = parseModel(isRecord(body) ? body.model : undefined);
-	if (!model) return jsonError('Model must be sonnet or opus.', 400);
+	if (!model) return jsonError(MODEL_ERROR, 400);
 
 	const tune = await deps.db.query.tunes.findFirst({ where: eq(tunes.id, id) });
 	if (!tune) return tuneNotFound();

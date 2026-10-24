@@ -1,6 +1,6 @@
 import type {
 	AiClient,
-	ExtractionModel,
+	AiModel,
 	ExtractionRequest,
 	GenerationRequest,
 	ScanImage
@@ -11,7 +11,7 @@ const API_VERSION = '2023-06-01';
 const MAX_OUTPUT_TOKENS = 16000;
 const REQUEST_TIMEOUT_MS = 120_000;
 
-const MODEL_IDS: Record<ExtractionModel, string> = {
+const MODEL_IDS: Record<AiModel, string> = {
 	sonnet: 'claude-sonnet-5-5',
 	opus: 'claude-opus-5-5'
 };
@@ -113,8 +113,6 @@ const GENERATION_SCHEMA = {
 	required: ['chart', 'changes'],
 	additionalProperties: false
 };
-
-const GENERATION_MODEL = MODEL_IDS.opus;
 
 const GENERATION_PROMPT = `You simplify a jazz chart by applying the user's plain-language Rules, returning a chord overlay on the exact same bar grid.
 
@@ -224,7 +222,7 @@ export function createAnthropicAiClient(apiKey: string, fetcher: typeof fetch = 
 
 		generate(request: GenerationRequest) {
 			return sendMessage(apiKey, fetcher, {
-				model: GENERATION_MODEL,
+				model: MODEL_IDS[request.model],
 				schema: GENERATION_SCHEMA,
 				content: [{ type: 'text', text: generationInstruction(request) }]
 			});
