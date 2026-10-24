@@ -1,11 +1,22 @@
 import type { Result } from '#lib/result.js';
 
-export const BEATS_PER_BAR = 4;
 export const NO_CHORD = 'N.C.';
 
 const MAX_SECTIONS = 32;
 const MAX_BARS_PER_SECTION = 64;
 const MAX_LABEL_LENGTH = 20;
+export const MAX_BEATS_PER_BAR = 12;
+export const BEAT_UNITS: readonly number[] = [2, 4, 8];
+
+export type EndingNumber = 1 | 2;
+export const ENDING_NUMBERS: readonly EndingNumber[] = [1, 2];
+
+export interface TimeSignature {
+	beats: number;
+	unit: number;
+}
+
+export const DEFAULT_TIME_SIGNATURE: TimeSignature = { beats: 4, unit: 4 };
 
 export interface PlacedChord {
 	beat: number;
@@ -14,6 +25,10 @@ export interface PlacedChord {
 
 export interface Bar {
 	chords: PlacedChord[];
+	repeatStart?: boolean;
+	repeatEnd?: boolean;
+	ending?: EndingNumber;
+	timeSignature?: TimeSignature;
 }
 
 export interface Section {
@@ -62,18 +77,68 @@ export function emptyChart(): Chart {
 	return { sections: [{ label: 'A', bars: [emptyBar()] }] };
 }
 
-export function barToSlots(bar: Bar): string[] {
-	const slots = Array.from({ length: BEATS_PER_BAR }, () => '');
-	for (const chord of bar.chords) slots[chord.beat - 1] = chord.symbol;
+export function isValidTimeSignature(signature: TimeSignature): boolean {
+	return (
+		Number.isInteger(signature.beats) &&
+		signature.beats >= 1 &&
+		signature.beats <= MAX_BEATS_PER_BAR &&
+		BEAT_UNITS.includes(signature.unit)
+	);
+}
+
+function inheritTimeSignature(inherited: TimeSignature, bar: Bar): TimeSignature {
+	return bar.timeSignature ?? inherited;
+}
+
+export function effectiveTimeSignatures(chart: Chart): TimeSignature[] {
+	let current = DEFAULT_TIME_SIGNATURE;
+	return chart.sections.flatMap((section) =>
+		section.bars.map((bar) => {
+			current = inheritTimeSignature(current, bar);
+			return current;
+		})
+	);
+}
+
+export function barToSlots(bar: Bar, beats: number): string[] {
+	const slots = Array.from({ length: beats }, () => '');
+	for (const chord of bar.chords) if (chord.beat <= beats) slots[chord.beat - 1] = chord.symbol;
 	return slots;
 }
 
-export function slotsToBar(slots: string[]): Bar {
-	return {
-		chords: slots.flatMap((symbol, i) =>
-			symbol.trim() ? [{ beat: i + 1, symbol: symbol.trim() }] : []
-		)
-	};
+export function slotsToChords(slots: string[]): PlacedChord[] {
+	return slots.flatMap((symbol, i) =>
+		symbol.trim() ? [{ beat: i + 1, symbol: symbol.trim() }] : []
+	);
+}
+
+export function sameBarGrid(a: Chart, b: Chart): boolean {
+	if (a.sections.length !== b.sections.length) return false;
+	const signaturesA = effectiveTimeSignatures(a);
+	const signaturesB = effectiveTimeSignatures(b);
+	let index = 0;
+	for (const [s, sectionA] of a.sections.entries()) {
+		const sectionB = b.sections[s];
+		if (sectionA.label !== sectionB.label || sectionA.bars.length !== sectionB.bars.length) {
+			return false;
+		}
+		for (const [i, barA] of sectionA.bars.entries()) {
+			const barB = sectionB.bars[i];
+			const sameSignature =
+				signaturesA[index].beats === signaturesB[index].beats &&
+				signaturesA[index].unit === signaturesB[index].unit;
+			if (
+				!sameSignature ||
+				Boolean(barA.repeatStart) !== Boolean(barB.repeatStart) ||
+				Boolean(barA.repeatEnd) !== Boolean(barB.repeatEnd) ||
+				barA.ending !== barB.ending
+			) {
+				return false;
+			}
+			index++;
+		}
+	}
+	return true;
 }
 
 export function validateChart(chart: unknown): Result<Chart> {
@@ -85,6 +150,7 @@ export function validateChart(chart: unknown): Result<Chart> {
 	}
 
 	const sections: Section[] = [];
+	let timeSignature = DEFAULT_TIME_SIGNATURE;
 	for (const [s, rawSection] of chart.sections.entries()) {
 		const sectionLocation = `Section ${s + 1}`;
 		if (!isRecord(rawSection) || typeof rawSection.label !== 'string') {
@@ -103,19 +169,58 @@ export function validateChart(chart: unknown): Result<Chart> {
 
 		const bars: Bar[] = [];
 		for (const [b, rawBar] of rawSection.bars.entries()) {
-			const bar = validateBar(rawBar, `${sectionLocation} (${label}), bar ${b + 1}`);
+			const bar = validateBar(rawBar, `${sectionLocation} (${label}), bar ${b + 1}`, timeSignature);
 			if ('error' in bar) return bar;
+			timeSignature = inheritTimeSignature(timeSignature, bar.value);
 			bars.push(bar.value);
 		}
 		sections.push({ label, bars });
 	}
-	return { value: { sections } };
+	const validated = { sections };
+	const structure = validateStructure(validated);
+	return structure ? { error: structure } : { value: validated };
 }
 
-function validateBar(rawBar: unknown, location: string): Result<Bar> {
+function validateTimeSignature(raw: unknown, location: string): Result<TimeSignature> {
+	const candidate = isRecord(raw) ? { beats: raw.beats, unit: raw.unit } : null;
+	if (
+		!candidate ||
+		typeof candidate.beats !== 'number' ||
+		typeof candidate.unit !== 'number' ||
+		!isValidTimeSignature({ beats: candidate.beats, unit: candidate.unit })
+	) {
+		return {
+			error: `${location}: time signature needs 1 to ${MAX_BEATS_PER_BAR} beats over a unit of ${BEAT_UNITS.join(', ')}.`
+		};
+	}
+	return { value: { beats: candidate.beats, unit: candidate.unit } };
+}
+
+function validateBar(rawBar: unknown, location: string, inherited: TimeSignature): Result<Bar> {
 	if (!isRecord(rawBar) || !Array.isArray(rawBar.chords)) {
 		return { error: `${location}: chords must be a list.` };
 	}
+	const marks: Pick<Bar, 'repeatStart' | 'repeatEnd' | 'ending' | 'timeSignature'> = {};
+	for (const flag of ['repeatStart', 'repeatEnd'] as const) {
+		const value = rawBar[flag];
+		if (value === undefined || value === false) continue;
+		if (value !== true) return { error: `${location}: ${flag} must be true or omitted.` };
+		marks[flag] = true;
+	}
+	if (rawBar.ending !== undefined) {
+		const ending = ENDING_NUMBERS.find((n) => n === rawBar.ending);
+		if (ending === undefined) {
+			return { error: `${location}: ending must be ${ENDING_NUMBERS.join(' or ')}.` };
+		}
+		marks.ending = ending;
+	}
+	if (rawBar.timeSignature !== undefined) {
+		const signature = validateTimeSignature(rawBar.timeSignature, location);
+		if ('error' in signature) return signature;
+		marks.timeSignature = signature.value;
+	}
+	const beats = (marks.timeSignature ?? inherited).beats;
+
 	const chords: PlacedChord[] = [];
 	const seenBeats = new Set<number>();
 	for (const raw of rawBar.chords) {
@@ -127,8 +232,8 @@ function validateBar(rawBar: unknown, location: string): Result<Bar> {
 			return { error: `${location}: invalid chord symbol "${symbol}" (${CHORD_FORMAT_HINT}).` };
 		}
 		const beat = raw.beat;
-		if (typeof beat !== 'number' || !Number.isInteger(beat) || beat < 1 || beat > BEATS_PER_BAR) {
-			return { error: `${location}: beat must be a whole number from 1 to ${BEATS_PER_BAR}.` };
+		if (typeof beat !== 'number' || !Number.isInteger(beat) || beat < 1 || beat > beats) {
+			return { error: `${location}: beat must be a whole number from 1 to ${beats}.` };
 		}
 		if (seenBeats.has(beat)) {
 			return { error: `${location}: two chords on beat ${beat}.` };
@@ -137,7 +242,51 @@ function validateBar(rawBar: unknown, location: string): Result<Bar> {
 		chords.push({ beat, symbol: normalizeChordSymbol(symbol) });
 	}
 	chords.sort((a, b) => a.beat - b.beat);
-	return { value: { chords } };
+	return { value: { chords, ...marks } };
+}
+
+function validateStructure(chart: Chart): string | null {
+	const bars = chart.sections.flatMap((section, s) =>
+		section.bars.map((bar, b) => ({
+			bar,
+			location: `Section ${s + 1} (${section.label}), bar ${b + 1}`
+		}))
+	);
+	let repeatOpen = false;
+	for (const [i, { bar, location }] of bars.entries()) {
+		const previous = bars[i - 1]?.bar.ending;
+		const next = bars[i + 1]?.bar.ending;
+
+		if (bar.repeatStart) {
+			if (bar.ending) return `${location}: a repeat cannot start inside an ending.`;
+			if (repeatOpen) return `${location}: repeats cannot be nested.`;
+			repeatOpen = true;
+		}
+
+		if (bar.ending === 1 && previous !== 1 && !repeatOpen) {
+			return `${location}: an ending needs an open repeat.`;
+		}
+		if (bar.ending === 2 && previous !== 1 && previous !== 2) {
+			return `${location}: a 2nd ending must follow a 1st ending.`;
+		}
+		if (bar.ending === 1) {
+			const lastOfEnding = next !== 1;
+			if (lastOfEnding && next !== 2)
+				return `${location}: a 1st ending must be followed by a 2nd ending.`;
+			if (lastOfEnding && !bar.repeatEnd)
+				return `${location}: a 1st ending must end with a repeat end.`;
+			if (!lastOfEnding && bar.repeatEnd)
+				return `${location}: only the last bar of a 1st ending can end the repeat.`;
+		}
+		if (bar.ending === 2 && bar.repeatEnd) return `${location}: a 2nd ending cannot end a repeat.`;
+
+		if (bar.repeatEnd) {
+			if (!repeatOpen) return `${location}: repeat end without a repeat start.`;
+			repeatOpen = false;
+		}
+	}
+	if (repeatOpen) return 'A repeat start has no matching repeat end.';
+	return null;
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

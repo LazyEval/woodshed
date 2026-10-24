@@ -1,5 +1,19 @@
 <script lang="ts">
-	import { BEATS_PER_BAR, barToSlots, slotsToBar, validateChart, type Chart } from '#lib/chart.js';
+	import {
+		BEAT_UNITS,
+		DEFAULT_TIME_SIGNATURE,
+		ENDING_NUMBERS,
+		MAX_BEATS_PER_BAR,
+		barToSlots,
+		effectiveTimeSignatures,
+		isValidTimeSignature,
+		slotsToChords,
+		validateChart,
+		type Bar,
+		type Chart,
+		type EndingNumber,
+		type TimeSignature
+	} from '#lib/chart.js';
 
 	interface Props {
 		chart: Chart;
@@ -10,40 +24,96 @@
 
 	let { chart, saving, error, onsave }: Props = $props();
 
-	interface EditableSection {
-		label: string;
-		bars: string[][];
+	interface EditableBar {
+		slots: string[];
+		repeatStart: boolean;
+		repeatEnd: boolean;
+		ending: EndingNumber | null;
+		beats: number | null;
+		unit: number;
 	}
 
-	const slotIndexes = Array.from({ length: BEATS_PER_BAR }, (_, i) => i);
+	interface EditableSection {
+		label: string;
+		bars: EditableBar[];
+	}
 
-	const emptySlots = () => barToSlots({ chords: [] });
+	function toEditableBar(bar: Bar): EditableBar {
+		return {
+			slots: barToSlots(bar, MAX_BEATS_PER_BAR),
+			repeatStart: bar.repeatStart ?? false,
+			repeatEnd: bar.repeatEnd ?? false,
+			ending: bar.ending ?? null,
+			beats: bar.timeSignature?.beats ?? null,
+			unit: bar.timeSignature?.unit ?? DEFAULT_TIME_SIGNATURE.unit
+		};
+	}
+
+	const newBar = () => toEditableBar({ chords: [] });
+
+	function toBar(bar: EditableBar, beats: number): Bar {
+		return {
+			chords: slotsToChords(bar.slots.slice(0, beats)),
+			...(bar.repeatStart && { repeatStart: true }),
+			...(bar.repeatEnd && { repeatEnd: true }),
+			...(bar.ending && { ending: bar.ending }),
+			...(bar.beats && { timeSignature: { beats: bar.beats, unit: bar.unit } })
+		};
+	}
 
 	// svelte-ignore state_referenced_locally
 	let sections = $state<EditableSection[]>(
 		chart.sections.map((section) => ({
 			label: section.label,
-			bars: section.bars.map(barToSlots)
+			bars: section.bars.map(toEditableBar)
 		}))
 	);
 
+	function enteredSignature(bar: EditableBar): TimeSignature | undefined {
+		if (bar.beats === null) return undefined;
+		const signature = { beats: bar.beats, unit: bar.unit };
+		return isValidTimeSignature(signature) ? signature : undefined;
+	}
+
+	const signatures = $derived.by(() => {
+		const flat = effectiveTimeSignatures({
+			sections: sections.map((section) => ({
+				label: section.label,
+				bars: section.bars.map((bar) => ({ chords: [], timeSignature: enteredSignature(bar) }))
+			}))
+		});
+		let index = 0;
+		return sections.map((section) => section.bars.map(() => flat[index++]));
+	});
+
 	const draft = $derived<Chart>({
-		sections: sections.map((section) => ({
+		sections: sections.map((section, s) => ({
 			label: section.label,
-			bars: section.bars.map(slotsToBar)
+			bars: section.bars.map((bar, b) => toBar(bar, signatures[s][b].beats))
 		}))
 	});
+
 	const problem = $derived.by(() => {
+		for (const [s, section] of sections.entries()) {
+			for (const [b, bar] of section.bars.entries()) {
+				const location = `Section ${s + 1} (${section.label}), bar ${b + 1}`;
+				if (bar.beats !== null && !enteredSignature(bar)) {
+					return `${location}: beats per bar must be a whole number from 1 to ${MAX_BEATS_PER_BAR}.`;
+				}
+				const hidden = bar.slots.slice(signatures[s][b].beats).some((slot) => slot.trim());
+				if (hidden) {
+					return `${location}: chords beyond beat ${signatures[s][b].beats} would be lost. Clear them or change the time signature.`;
+				}
+			}
+		}
 		const result = validateChart(draft);
 		return 'error' in result ? result.error : null;
 	});
 
-	function addSection() {
-		sections.push({ label: '', bars: [emptySlots()] });
-	}
-
-	function removeBar(section: EditableSection, index: number) {
-		if (section.bars.length > 1) section.bars.splice(index, 1);
+	function move<T>(items: T[], from: number, to: number) {
+		if (to < 0 || to >= items.length) return;
+		const [item] = items.splice(from, 1);
+		items.splice(to, 0, item);
 	}
 
 	function save(event: SubmitEvent) {
@@ -59,15 +129,29 @@
 			<legend>Section {s + 1}</legend>
 			<div class="section-head">
 				<label>Label <input bind:value={section.label} placeholder="A, B, Intro, Coda" /></label>
-				<button type="button" onclick={() => sections.splice(s, 1)}>Remove section</button>
+				<button
+					type="button"
+					aria-label="Move section {s + 1} up"
+					disabled={s === 0}
+					onclick={() => move(sections, s, s - 1)}>↑</button
+				>
+				<button
+					type="button"
+					aria-label="Move section {s + 1} down"
+					disabled={s === sections.length - 1}
+					onclick={() => move(sections, s, s + 1)}>↓</button
+				>
+				<button type="button" onclick={() => sections.splice(s, 1)} disabled={sections.length <= 1}>
+					Remove section
+				</button>
 			</div>
 			<ol class="bars">
-				{#each section.bars as slots, b (b)}
+				{#each section.bars as bar, b (b)}
 					<li class="bar-cell">
 						<div class="bar" aria-label="Bar {b + 1}">
-							{#each slotIndexes as i (i)}
+							{#each { length: signatures[s][b].beats }, i (i)}
 								<input
-									bind:value={slots[i]}
+									bind:value={bar.slots[i]}
 									aria-label="Section {s + 1} bar {b + 1} beat {i + 1}"
 									placeholder={String(i + 1)}
 									autocapitalize="characters"
@@ -76,21 +160,80 @@
 								/>
 							{/each}
 						</div>
-						<button
-							type="button"
-							class="remove-bar"
-							aria-label="Remove section {s + 1} bar {b + 1}"
-							onclick={() => removeBar(section, b)}
-							disabled={section.bars.length <= 1}>×</button
-						>
+						<div class="bar-options">
+							<label>
+								<input
+									type="checkbox"
+									bind:checked={bar.repeatStart}
+									aria-label="Section {s + 1} bar {b + 1} repeat start"
+								/>
+								|:
+							</label>
+							<label>
+								<input
+									type="checkbox"
+									bind:checked={bar.repeatEnd}
+									aria-label="Section {s + 1} bar {b + 1} repeat end"
+								/>
+								:|
+							</label>
+							<select bind:value={bar.ending} aria-label="Section {s + 1} bar {b + 1} ending">
+								<option value={null}>No ending</option>
+								{#each ENDING_NUMBERS as number (number)}
+									<option value={number}>Ending {number}</option>
+								{/each}
+							</select>
+							<input
+								type="number"
+								class="beats"
+								min="1"
+								max={MAX_BEATS_PER_BAR}
+								bind:value={bar.beats}
+								placeholder={String(signatures[s][b].beats)}
+								aria-label="Section {s + 1} bar {b + 1} beats per bar"
+							/>
+							<select
+								bind:value={bar.unit}
+								aria-label="Section {s + 1} bar {b + 1} beat unit"
+								disabled={bar.beats === null}
+							>
+								{#each BEAT_UNITS as unit (unit)}
+									<option value={unit}>/{unit}</option>
+								{/each}
+							</select>
+							<button
+								type="button"
+								aria-label="Move section {s + 1} bar {b + 1} earlier"
+								disabled={b === 0}
+								onclick={() => move(section.bars, b, b - 1)}>←</button
+							>
+							<button
+								type="button"
+								aria-label="Move section {s + 1} bar {b + 1} later"
+								disabled={b === section.bars.length - 1}
+								onclick={() => move(section.bars, b, b + 1)}>→</button
+							>
+							<button
+								type="button"
+								aria-label="Insert bar after section {s + 1} bar {b + 1}"
+								onclick={() => section.bars.splice(b + 1, 0, newBar())}>+</button
+							>
+							<button
+								type="button"
+								aria-label="Remove section {s + 1} bar {b + 1}"
+								onclick={() => section.bars.splice(b, 1)}
+								disabled={section.bars.length <= 1}>×</button
+							>
+						</div>
 					</li>
 				{/each}
 			</ol>
-			<button type="button" onclick={() => section.bars.push(emptySlots())}>Add bar</button>
 		</fieldset>
 	{/each}
 
-	<button type="button" onclick={addSection}>Add section</button>
+	<button type="button" onclick={() => sections.push({ label: '', bars: [newBar()] })}>
+		Add section
+	</button>
 
 	{#if problem}<p role="alert">{problem}</p>{/if}
 	{#if error}<p role="alert">{error}</p>{/if}
@@ -112,29 +255,34 @@
 	}
 	.bars {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
-		gap: 0.5rem;
+		grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+		gap: 0.75rem;
 		margin: 0 0 0.5rem;
 		padding: 0;
 		list-style: none;
 	}
 	.bar-cell {
-		display: flex;
+		display: grid;
 		gap: 2px;
-		align-items: center;
-	}
-	.remove-bar {
-		padding: 0.25rem 0.5rem;
 	}
 	.bar {
-		flex: 1;
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
+		display: flex;
 		gap: 2px;
 	}
 	.bar input {
+		flex: 1;
 		min-width: 0;
 		padding: 0.5rem 0.25rem;
 		text-align: center;
+	}
+	.bar-options {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem;
+		align-items: center;
+		font-size: 0.875rem;
+	}
+	.beats {
+		width: 3.5rem;
 	}
 </style>

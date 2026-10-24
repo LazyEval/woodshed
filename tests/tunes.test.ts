@@ -367,3 +367,170 @@ describe('source chart', () => {
 		expect((await reopenSourceChart(createTestApp().deps, 'nope')).status).toBe(404);
 	});
 });
+
+describe('source chart structure', () => {
+	const bar = (extra: object = {}) => ({ chords: [{ beat: 1, symbol: 'C' }], ...extra });
+
+	async function save(app: ReturnType<typeof createTestApp>, id: string, chart: unknown) {
+		return saveSourceChart(jsonRequest(`/api/tunes/${id}/chart`, 'PUT', { chart }), app.deps, id);
+	}
+
+	async function storedChart(app: ReturnType<typeof createTestApp>, id: string) {
+		const stored = (await getTune(app.deps, id).then((r) => r.json())) as TuneJson;
+		return stored.sourceChart;
+	}
+
+	it('round-trips repeats, 1st/2nd endings and time signatures', async () => {
+		const { app, tune } = await newTune();
+		const chart = {
+			sections: [
+				{
+					label: 'A',
+					bars: [
+						bar({ repeatStart: true, timeSignature: { beats: 3, unit: 4 } }),
+						bar(),
+						bar({ ending: 1, repeatEnd: true }),
+						bar({ ending: 2, timeSignature: { beats: 4, unit: 4 } })
+					]
+				},
+				{ label: 'B', bars: [bar({ repeatStart: true, repeatEnd: true })] }
+			]
+		};
+
+		const response = await save(app, tune.id, chart);
+
+		expect(response.status).toBe(200);
+		expect(await storedChart(app, tune.id)).toEqual(chart);
+	});
+
+	it('accepts a repeat spanning several sections', async () => {
+		const { app, tune } = await newTune();
+		const chart = {
+			sections: [
+				{ label: 'A', bars: [bar({ repeatStart: true })] },
+				{ label: 'B', bars: [bar({ repeatEnd: true })] }
+			]
+		};
+
+		expect((await save(app, tune.id, chart)).status).toBe(200);
+	});
+
+	it.each([
+		['an unmatched repeat end', [bar(), bar({ repeatEnd: true })]],
+		['an unclosed repeat start', [bar({ repeatStart: true }), bar()]],
+		[
+			'nested repeats',
+			[bar({ repeatStart: true }), bar({ repeatStart: true }), bar({ repeatEnd: true })]
+		],
+		['an ending without a repeat', [bar({ ending: 1 }), bar({ ending: 2 })]],
+		[
+			'a 1st ending without a 2nd',
+			[bar({ repeatStart: true }), bar({ ending: 1, repeatEnd: true }), bar()]
+		],
+		[
+			'a 1st ending at the end of the chart',
+			[bar({ repeatStart: true }), bar({ ending: 1, repeatEnd: true })]
+		],
+		[
+			'a 2nd ending without a 1st',
+			[bar({ repeatStart: true }), bar({ repeatEnd: true }), bar({ ending: 2 })]
+		],
+		[
+			'a 1st ending that does not close the repeat',
+			[bar({ repeatStart: true }), bar({ ending: 1 }), bar({ ending: 2 })]
+		],
+		[
+			'a repeat end in the middle of a 1st ending',
+			[
+				bar({ repeatStart: true }),
+				bar({ ending: 1, repeatEnd: true }),
+				bar({ ending: 1, repeatEnd: true }),
+				bar({ ending: 2 })
+			]
+		],
+		[
+			'a repeat end on a 2nd ending',
+			[
+				bar({ repeatStart: true }),
+				bar({ ending: 1, repeatEnd: true }),
+				bar({ ending: 2, repeatEnd: true })
+			]
+		],
+		[
+			'a repeat start on an ending',
+			[
+				bar({ repeatStart: true }),
+				bar({ ending: 1, repeatEnd: true }),
+				bar({ ending: 2, repeatStart: true })
+			]
+		],
+		['an unknown ending number', [bar({ repeatStart: true }), bar({ ending: 3, repeatEnd: true })]],
+		['a non-boolean repeat flag', [bar({ repeatStart: 'yes' })]]
+	])('rejects %s and leaves the stored chart untouched', async (_name, bars) => {
+		const { app, tune } = await newTune();
+		await save(app, tune.id, validChart);
+
+		const response = await save(app, tune.id, { sections: [{ label: 'A', bars }] });
+
+		expect(response.status).toBe(400);
+		expect(((await response.json()) as TuneJson).error).toBeTruthy();
+		expect(await storedChart(app, tune.id)).toEqual(validChart);
+	});
+
+	it('lets bars inherit a time signature across sections and validates beats against it', async () => {
+		const { app, tune } = await newTune();
+		const threeFour = { beats: 3, unit: 4 };
+		const waltz = (beat: number) => ({
+			sections: [
+				{ label: 'A', bars: [bar({ timeSignature: threeFour })] },
+				{ label: 'B', bars: [{ chords: [{ beat, symbol: 'G7' }] }] }
+			]
+		});
+
+		const onBeatThree = await save(app, tune.id, waltz(3));
+		const onBeatFour = await save(app, tune.id, waltz(4));
+
+		expect(onBeatThree.status).toBe(200);
+		expect(onBeatFour.status).toBe(400);
+		expect(((await onBeatFour.json()) as TuneJson).error).toMatch(/Section 2 \(B\), bar 1.*beat/);
+	});
+
+	it('returns to 4/4 beat range when no time signature is set', async () => {
+		const { app, tune } = await newTune();
+		const chart = { sections: [{ label: 'A', bars: [{ chords: [{ beat: 4, symbol: 'C' }] }] }] };
+
+		expect((await save(app, tune.id, chart)).status).toBe(200);
+	});
+
+	it.each([
+		['zero beats', { beats: 0, unit: 4 }],
+		['too many beats', { beats: 13, unit: 4 }],
+		['fractional beats', { beats: 2.5, unit: 4 }],
+		['an unsupported unit', { beats: 4, unit: 3 }],
+		['a non-object', '4/4']
+	])('rejects a time signature with %s', async (_name, timeSignature) => {
+		const { app, tune } = await newTune();
+
+		const response = await save(app, tune.id, {
+			sections: [{ label: 'A', bars: [bar({ timeSignature })] }]
+		});
+
+		expect(response.status).toBe(400);
+	});
+
+	it('reorders and removes bars and sections by saving the new arrangement', async () => {
+		const { app, tune } = await newTune();
+		await save(app, tune.id, validChart);
+		const reordered = {
+			sections: [
+				{ label: 'Coda', bars: [bar()] },
+				{ label: 'A', bars: [validChart.sections[0].bars[2], validChart.sections[0].bars[0]] }
+			]
+		};
+
+		const response = await save(app, tune.id, reordered);
+
+		expect(response.status).toBe(200);
+		expect(await storedChart(app, tune.id)).toEqual(reordered);
+	});
+});
