@@ -67,6 +67,9 @@ export async function updateSimplifiedChart(
 ): Promise<Response> {
 	const body = await readBody(request);
 	if ('error' in body) return jsonError(body.error, 400);
+	if (body.value.name === undefined && body.value.chart === undefined) {
+		return jsonError('Nothing to update: send a name or a chart.', 400);
+	}
 
 	const changes: Partial<typeof simplifiedCharts.$inferInsert> = {};
 	if (body.value.name !== undefined) {
@@ -81,7 +84,8 @@ export async function updateSimplifiedChart(
 		}),
 		deps.db.query.tunes.findFirst({ where: eq(tunes.id, tuneId) })
 	]);
-	if (!existing || !tune) return chartNotFound();
+	if (!tune) return tuneNotFound();
+	if (!existing) return chartNotFound();
 
 	if (body.value.chart !== undefined) {
 		const validated = validateChart(

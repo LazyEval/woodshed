@@ -221,6 +221,18 @@ describe('simplified charts', () => {
 		expect((await tuneOf(app, tuneId)).simplifiedCharts[0].name).toBe('Guide tones');
 	});
 
+	it('rejects an update that sends neither name nor chart, and reports an unknown tune', async () => {
+		const app = createTestApp();
+		const tuneId = await verifiedTune(app);
+		const { chart } = await simplified(app, tuneId);
+
+		const empty = await update(app, tuneId, chart.id, {});
+		const noTune = await update(app, 'nope', chart.id, { name: 'X' });
+
+		expect(empty.status).toBe(400);
+		expect(((await noTune.json()) as { error: string }).error).toMatch(/tune/i);
+	});
+
 	it('deletes one chart and removes all with the tune', async () => {
 		const app = createTestApp();
 		const tuneId = await verifiedTune(app);

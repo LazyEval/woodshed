@@ -10,7 +10,7 @@ export interface TuneSummary {
 	shelved: boolean;
 }
 
-export interface SimplifiedChartSummary {
+export interface SimplifiedChartView {
 	id: string;
 	name: string;
 	origin: SimplifiedChartOrigin;
@@ -19,7 +19,7 @@ export interface SimplifiedChartSummary {
 
 export interface TuneDetail extends TuneSummary, Schedule {
 	sourceChart: Chart;
-	simplifiedCharts: SimplifiedChartSummary[];
+	simplifiedCharts: SimplifiedChartView[];
 	scanPageCount: number;
 	verifiedAt: number | null;
 }

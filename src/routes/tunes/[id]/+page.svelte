@@ -87,6 +87,8 @@
 		tune.simplifiedCharts.find((chart) => chart.id === selectedChartId) ?? null
 	);
 
+	const simplifiedPath = (id: string) => `/api/tunes/${tune.id}/simplified-charts/${id}`;
+
 	function select(id: string | null) {
 		selectedChartId = id;
 		editingSimplified = false;
@@ -113,11 +115,7 @@
 		if (!selectedSimplified) return;
 		savingSimplified = true;
 		simplifiedError = null;
-		const result = await send(
-			`/api/tunes/${tune.id}/simplified-charts/${selectedSimplified.id}`,
-			'PUT',
-			{ chart }
-		);
+		const result = await send(simplifiedPath(selectedSimplified.id), 'PUT', { chart });
 		savingSimplified = false;
 		if (!result.ok) {
 			simplifiedError = result.body.error;
@@ -131,21 +129,14 @@
 		if (!selectedSimplified) return;
 		const name = prompt('Rename Simplified Chart', selectedSimplified.name);
 		if (!name) return;
-		const result = await send(
-			`/api/tunes/${tune.id}/simplified-charts/${selectedSimplified.id}`,
-			'PUT',
-			{ name }
-		);
+		const result = await send(simplifiedPath(selectedSimplified.id), 'PUT', { name });
 		if (!result.ok) simplifiedError = result.body.error;
 		else await invalidateAll();
 	}
 
 	async function removeSimplified() {
 		if (!selectedSimplified || !confirm(`Delete "${selectedSimplified.name}"?`)) return;
-		const result = await send(
-			`/api/tunes/${tune.id}/simplified-charts/${selectedSimplified.id}`,
-			'DELETE'
-		);
+		const result = await send(simplifiedPath(selectedSimplified.id), 'DELETE');
 		if (!result.ok) {
 			simplifiedError = result.body.error;
 			return;
