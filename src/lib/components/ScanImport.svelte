@@ -61,7 +61,7 @@
 				replace.ondone();
 				return;
 			}
-			await goto(resolve('/tunes/[id]', { id: result.body?.id ?? '' }));
+			await goto(resolve('/tunes/[id]', { id: result.body.id }));
 		} catch {
 			error = `${failureMessage} Check your connection and try again.`;
 			failed = true;
