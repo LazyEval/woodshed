@@ -77,11 +77,11 @@ export function isValidChordSymbol(symbol: string): boolean {
 const KEY_PATTERN = /^[A-G][#b]?m?$/;
 const TONIC_PATTERN = /^[A-G][#b]?$/;
 
-export function isValidTonic(tonic: string): boolean {
+function isValidTonic(tonic: string): boolean {
 	return TONIC_PATTERN.test(tonic);
 }
 
-export function countBars(chart: Pick<Chart, 'sections'>): number {
+export function countBars(chart: { sections: { bars: unknown[] }[] }): number {
 	return chart.sections.reduce((total, section) => total + section.bars.length, 0);
 }
 
@@ -213,7 +213,6 @@ export function validateChart(chart: unknown): Result<Chart> {
 function validateKeyCenters(raw: unknown, barCount: number): Result<KeyCenter[]> {
 	if (raw === undefined) return { value: [] };
 	if (!Array.isArray(raw)) return { error: 'Key centers must be a list.' };
-	if (raw.length > barCount) return { error: 'A chart has at most one key center per bar.' };
 
 	const keyCenters: KeyCenter[] = [];
 	for (const [i, item] of raw.entries()) {

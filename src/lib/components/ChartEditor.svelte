@@ -6,6 +6,7 @@
 		KEY_MODES,
 		MAX_BEATS_PER_BAR,
 		barToSlots,
+		countBars,
 		effectiveTimeSignatures,
 		isValidTimeSignature,
 		slotsToChords,
@@ -85,10 +86,7 @@
 
 	function addKeyCenter() {
 		const last = keyCenters.at(-1)?.endBar ?? 0;
-		const start = Math.min(
-			last + 1,
-			sections.reduce((n, section) => n + section.bars.length, 0)
-		);
+		const start = Math.min(last + 1, countBars({ sections }));
 		keyCenters.push({ startBar: start, endBar: start, tonic: 'C', mode: 'major' });
 	}
 

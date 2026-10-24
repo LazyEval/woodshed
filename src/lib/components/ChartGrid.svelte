@@ -39,9 +39,8 @@
 					class:repeat-start={bar.repeatStart}
 					class:repeat-end={bar.repeatEnd}
 					class:ending={bar.ending}
-					class:keyed={keyCenter}
+					class:key-centered={keyCenter}
 					style:--hue={keyCenter && hue(keyCenterName(keyCenter))}
-					data-key-center={keyCenter && keyCenterName(keyCenter)}
 					style:grid-template-columns="repeat({signature.beats}, 1fr)"
 					aria-label="Bar {b + 1}"
 				>
@@ -93,7 +92,7 @@
 		font-size: 1.125rem;
 		font-weight: 600;
 	}
-	.keyed {
+	.key-centered {
 		background: hsl(var(--hue) 70% 50% / 0.18);
 	}
 	.legend {
