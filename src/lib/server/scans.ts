@@ -104,6 +104,19 @@ async function readPages(form: FormData): Promise<ScanImage[] | Response> {
 	);
 }
 
+async function readUpload(
+	request: Request
+): Promise<{ form: FormData; pages: ScanImage[] } | Response> {
+	let form: FormData;
+	try {
+		form = await request.formData();
+	} catch {
+		return jsonError('Request body must be form data.', 400);
+	}
+	const pages = await readPages(form);
+	return pages instanceof Response ? pages : { form, pages };
+}
+
 async function storePages(deps: Deps, tuneId: string, pages: ScanImage[]): Promise<void> {
 	await Promise.all(
 		pages.map((page, i) =>
@@ -114,9 +127,16 @@ async function storePages(deps: Deps, tuneId: string, pages: ScanImage[]): Promi
 	);
 }
 
-export async function deleteScanPages(deps: Deps, tuneId: string, count: number): Promise<void> {
-	if (count === 0) return;
-	await deps.scans.delete(Array.from({ length: count }, (_, i) => scanKey(tuneId, i)));
+export async function deleteScanPages(
+	deps: Deps,
+	tuneId: string,
+	count: number,
+	fromPage = 0
+): Promise<void> {
+	if (count <= fromPage) return;
+	await deps.scans.delete(
+		Array.from({ length: count - fromPage }, (_, i) => scanKey(tuneId, fromPage + i))
+	);
 }
 
 async function loadPages(deps: Deps, tuneId: string, count: number): Promise<ScanImage[]> {
@@ -133,14 +153,9 @@ async function loadPages(deps: Deps, tuneId: string, count: number): Promise<Sca
 }
 
 export async function importTune(request: Request, deps: Deps): Promise<Response> {
-	let form: FormData;
-	try {
-		form = await request.formData();
-	} catch {
-		return jsonError('Request body must be form data.', 400);
-	}
-	const pages = await readPages(form);
-	if (pages instanceof Response) return pages;
+	const upload = await readUpload(request);
+	if (upload instanceof Response) return upload;
+	const { form, pages } = upload;
 	const manual = form.get('mode') === 'manual';
 	const model = parseModel(form.get('model'));
 	if (!model) return jsonError('Model must be sonnet or opus.', 400);
@@ -186,14 +201,9 @@ export async function replaceSourceChart(
 	deps: Deps,
 	id: string
 ): Promise<Response> {
-	let form: FormData;
-	try {
-		form = await request.formData();
-	} catch {
-		return jsonError('Request body must be form data.', 400);
-	}
-	const pages = await readPages(form);
-	if (pages instanceof Response) return pages;
+	const upload = await readUpload(request);
+	if (upload instanceof Response) return upload;
+	const { form, pages } = upload;
 	const model = parseModel(form.get('model'));
 	if (!model) return jsonError('Model must be sonnet or opus.', 400);
 
@@ -232,10 +242,7 @@ export async function replaceSourceChart(
 		replaceChart,
 		...liveCharts.map((chart) => archive(deps, chart, now))
 	]);
-	const orphaned = Array.from({ length: Math.max(0, tune.scanPageCount - pages.length) }, (_, i) =>
-		scanKey(id, pages.length + i)
-	);
-	if (orphaned.length) await deps.scans.delete(orphaned).catch(() => undefined);
+	await deleteScanPages(deps, id, tune.scanPageCount, pages.length).catch(() => undefined);
 	return Response.json(replaced);
 }
 
