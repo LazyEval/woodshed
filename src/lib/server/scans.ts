@@ -37,9 +37,23 @@ function cleanText(value: unknown): string | null {
 	return value.trim().slice(0, MAX_TEXT_LENGTH) || null;
 }
 
+function closeFirstEndings(rawChart: unknown): unknown {
+	if (!isRecord(rawChart) || !Array.isArray(rawChart.sections)) return rawChart;
+	const bars = rawChart.sections.flatMap((section) =>
+		isRecord(section) && Array.isArray(section.bars) ? section.bars : []
+	);
+	for (const [i, bar] of bars.entries()) {
+		const next = bars[i + 1];
+		if (isRecord(bar) && isRecord(next) && bar.ending === 1 && next.ending === 2) {
+			bar.repeatEnd = true;
+		}
+	}
+	return rawChart;
+}
+
 function readExtracted(raw: unknown): Result<Extracted> {
 	if (!isRecord(raw)) return { error: 'Extraction result must be an object.' };
-	const chart = validateChart(raw.chart);
+	const chart = validateChart(closeFirstEndings(raw.chart));
 	if ('error' in chart) return chart;
 	const key = cleanText(raw.key);
 	return {

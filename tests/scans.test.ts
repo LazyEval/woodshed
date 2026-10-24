@@ -163,6 +163,32 @@ describe('importing a tune from a scan', () => {
 		expect(await scanObjectCount()).toBe(0);
 	});
 
+	it('closes a 1st ending the AI left without a repeat end instead of failing', async () => {
+		const app = createTestApp();
+		app.ai.willExtract({
+			...extracted,
+			chart: {
+				sections: [
+					{
+						label: 'A',
+						bars: [
+							{ chords: [{ beat: 1, symbol: 'Cm7' }], repeatStart: true },
+							{ chords: [{ beat: 1, symbol: 'F7' }], ending: 1 },
+							{ chords: [{ beat: 1, symbol: 'Bb7' }], ending: 2 }
+						]
+					}
+				]
+			}
+		});
+
+		const response = await importTune(importRequest([page('x')]), app.deps);
+
+		expect(response.status).toBe(201);
+		expect(app.ai.extractRequests).toHaveLength(1);
+		const tune = (await response.json()) as TuneJson;
+		expect(tune.sourceChart.sections[0].bars[1].repeatEnd).toBe(true);
+	});
+
 	it('persists nothing when the AI call fails', async () => {
 		const app = createTestApp();
 		app.ai.willExtract(new Error('upstream down'));
