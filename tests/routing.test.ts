@@ -117,4 +117,29 @@ describe('routing through the built worker', () => {
 		expect(scan.status).toBe(200);
 		expect(scan.headers.get('content-type')).toBe('image/jpeg');
 	});
+
+	it('routes the archive export and import through the guard to the handlers', async () => {
+		const login = await SELF.fetch('https://woodshed.test/login/submit', {
+			method: 'POST',
+			headers: browserHeaders,
+			body: new URLSearchParams({ password: APP_PASSWORD }),
+			redirect: 'manual'
+		});
+		const cookie = login.headers.get('set-cookie')!.split(';')[0];
+		const headers = { cookie, origin: 'https://woodshed.test' };
+
+		const unauthenticated = await SELF.fetch('https://woodshed.test/api/archive', {
+			redirect: 'manual'
+		});
+		const exported = await SELF.fetch('https://woodshed.test/api/archive', { headers });
+		const unconfirmed = await SELF.fetch('https://woodshed.test/api/archive', {
+			method: 'PUT',
+			headers,
+			body: await exported.arrayBuffer()
+		});
+
+		expect(unauthenticated.status).toBe(303);
+		expect(exported.headers.get('content-type')).toBe('application/zip');
+		expect(unconfirmed.status).toBe(409);
+	});
 });

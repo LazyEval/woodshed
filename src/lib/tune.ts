@@ -39,6 +39,8 @@ export const isArchived = (chart: Pick<SimplifiedChartView, 'archivedAt'>) =>
 
 export const CONFIRM_ARCHIVE = { name: 'confirmArchive', value: 'true' } as const;
 
+export const CONFIRM_REPLACE = { name: 'confirmReplace', value: 'true' } as const;
+
 export interface RuleView extends RuleSnapshot {
 	id: string;
 }

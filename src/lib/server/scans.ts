@@ -12,7 +12,7 @@ import { archive, listLiveSimplifiedCharts } from '#lib/server/simplified-charts
 export const MAX_SCAN_PAGES = 12;
 export const MAX_PAGE_BYTES = 5 * 1024 * 1024;
 const MAX_TEXT_LENGTH = 200;
-const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+export const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const EXTRACTION_ATTEMPTS = 2;
 const VERIFIED_LOCKED = 'Source Chart is Verified and cannot be edited. Reopen it first.';
 
@@ -25,7 +25,7 @@ interface Extracted {
 
 type Extraction = { value: Extracted } | { failure: Response };
 
-const scanKey = (tuneId: string, version: number, page: number) =>
+export const scanKey = (tuneId: string, version: number, page: number) =>
 	version === 0 ? `scans/${tuneId}/${page}` : `scans/${tuneId}/v${version}/${page}`;
 
 function cleanText(value: unknown): string | null {

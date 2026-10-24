@@ -66,3 +66,7 @@ One-time setup:
    - `ANTHROPIC_API_KEY`: Claude API key used for Scan extraction.
 
 Install on a phone via the browser's "Add to Home Screen" (web manifest in `static/`).
+
+## Backup API
+
+`GET /api/archive` downloads one zip (stored, uncompressed): `manifest.json` (format `woodshed-archive`, version 1: Tunes with Source Charts and Key Centers, Simplified Charts including archived, Practice Sessions, Rules) plus `scans/<tuneId>/<page>`. `PUT /api/archive` (raw zip body) validates the whole archive first (422 on malformed or incompatible), answers 409 with a summary until `?confirmReplace=true` is sent, then replaces all data atomically (one D1 batch; Scans written under fresh versions first, old ones deleted after).
