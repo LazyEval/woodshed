@@ -9,7 +9,7 @@ import {
 import { isCalendarDate, isPracticedChart, isRating } from '#lib/rotation.js';
 import type { practiceSessions, rules, simplifiedCharts, tunes } from '#lib/server/db/schema.js';
 import { parseRule } from '#lib/server/rules.js';
-import { IMAGE_TYPES, MAX_SCAN_PAGES } from '#lib/server/scans.js';
+import { IMAGE_TYPES, MAX_SCAN_PAGES } from '#lib/server/scan-storage.js';
 import { parseTuneFields } from '#lib/server/tunes.js';
 import { parseName } from '#lib/server/validation.js';
 

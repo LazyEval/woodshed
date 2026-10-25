@@ -4,15 +4,13 @@ import type { Result } from '#lib/result.js';
 import type { AiModel, ScanImage } from '#lib/server/ai.js';
 import type { Deps } from '#lib/server/deps.js';
 import { tunes } from '#lib/server/db/schema.js';
+import { IMAGE_TYPES, MAX_PAGE_BYTES, MAX_SCAN_PAGES, scanKey } from '#lib/server/scan-storage.js';
 import { jsonError, tuneNotFound } from '#lib/server/http.js';
 import { MODEL_ERROR, parseModel } from '#lib/server/validation.js';
 import { CONFIRM_ARCHIVE } from '#lib/tune.js';
 import { archive, listLiveSimplifiedCharts } from '#lib/server/simplified-charts.js';
 
-export const MAX_SCAN_PAGES = 12;
-export const MAX_PAGE_BYTES = 5 * 1024 * 1024;
 const MAX_TEXT_LENGTH = 200;
-export const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const EXTRACTION_ATTEMPTS = 2;
 const VERIFIED_LOCKED = 'Source Chart is Verified and cannot be edited. Reopen it first.';
 
@@ -24,9 +22,6 @@ interface Extracted {
 }
 
 type Extraction = { value: Extracted } | { failure: Response };
-
-export const scanKey = (tuneId: string, version: number, page: number) =>
-	version === 0 ? `scans/${tuneId}/${page}` : `scans/${tuneId}/v${version}/${page}`;
 
 function cleanText(value: unknown): string | null {
 	if (typeof value !== 'string') return null;

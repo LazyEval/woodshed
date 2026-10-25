@@ -12,7 +12,7 @@ import {
 } from '#lib/server/archive-manifest.js';
 import { practiceSessions, rules, simplifiedCharts, tunes } from '#lib/server/db/schema.js';
 import { jsonError } from '#lib/server/http.js';
-import { IMAGE_TYPES, MAX_PAGE_BYTES, scanKey } from '#lib/server/scans.js';
+import { IMAGE_TYPES, MAX_PAGE_BYTES, scanArchiveName, scanKey } from '#lib/server/scan-storage.js';
 import { readZip, writeZip } from '#lib/server/zip.js';
 
 const MANIFEST_NAME = 'manifest.json';
@@ -25,8 +25,6 @@ interface Archive {
 	manifest: Manifest;
 	scans: Map<string, Uint8Array>;
 }
-
-const archiveScanName = (tuneId: string, page: number) => scanKey(tuneId, 0, page);
 
 export async function exportArchive(deps: Deps): Promise<Response> {
 	const [tuneRows, simplifiedChartRows, sessionRows, ruleRows] = await Promise.all([
@@ -45,7 +43,7 @@ export async function exportArchive(deps: Deps): Promise<Response> {
 			if (!object) return jsonError(`Scan page ${page} of "${tune.title}" is missing.`, 500);
 			scanPages.push(object.httpMetadata?.contentType ?? IMAGE_TYPES[0]);
 			files.push({
-				name: archiveScanName(tune.id, page),
+				name: scanArchiveName(tune.id, page),
 				data: new Uint8Array(await object.arrayBuffer())
 			});
 		}
@@ -94,7 +92,7 @@ function parseArchive(bytes: Uint8Array): Archive {
 	const scans = new Map<string, Uint8Array>();
 	for (const tune of manifest.tunes) {
 		for (let page = 0; page < tune.scanPages.length; page++) {
-			const name = archiveScanName(tune.id, page);
+			const name = scanArchiveName(tune.id, page);
 			const data = unzipped.value.get(name);
 			if (!data) throw new InvalidArchive(`Archive is missing ${name}.`);
 			if (data.length > MAX_PAGE_BYTES) throw new InvalidArchive(`${name} is too large.`);
@@ -157,7 +155,7 @@ async function replaceAll(deps: Deps, { manifest, scans }: Archive): Promise<voi
 		scanPages.forEach((contentType, page) =>
 			writes.push({
 				key: scanKey(tune.id, scanVersion, page),
-				data: scans.get(archiveScanName(tune.id, page))!,
+				data: scans.get(scanArchiveName(tune.id, page))!,
 				contentType
 			})
 		);

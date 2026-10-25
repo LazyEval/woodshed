@@ -18,6 +18,34 @@ const END_RECORD_SIZE = 22;
 const MAX_COMMENT_SIZE = 0xffff;
 const MAX_ENTRIES = 0xffff;
 const MAX_ARCHIVE_BYTES = 0xffffffff;
+const LOCAL = {
+	signature: 0,
+	versionNeeded: 4,
+	flags: 6,
+	method: 8,
+	date: 12,
+	crc: 14,
+	compressedSize: 18,
+	size: 22,
+	nameLength: 26,
+	extraLength: 28
+} as const;
+const CENTRAL = {
+	signature: 0,
+	versionMade: 4,
+	versionNeeded: 6,
+	flags: 8,
+	method: 10,
+	date: 14,
+	crc: 16,
+	compressedSize: 20,
+	size: 24,
+	nameLength: 28,
+	extraLength: 30,
+	commentLength: 32,
+	localOffset: 42
+} as const;
+const END = { entriesOnDisk: 8, entryCount: 10, centralSize: 12, centralOffset: 16 } as const;
 const INVALID = 'Archive is not a valid zip file.';
 
 const CRC_TABLE = (() => {
@@ -58,38 +86,38 @@ export function writeZip(entries: ZipEntry[]): Result<Uint8Array<ArrayBuffer>> {
 	let centralOffset = localSize;
 	for (const e of prepared) {
 		const localOffset = offset;
-		view.setUint32(offset, LOCAL_SIGNATURE, true);
-		view.setUint16(offset + 4, VERSION, true);
-		view.setUint16(offset + 6, UTF8_FLAG, true);
-		view.setUint16(offset + 8, STORED, true);
-		view.setUint16(offset + 12, DOS_DATE_1980_01_01, true);
-		view.setUint32(offset + 14, e.crc, true);
-		view.setUint32(offset + 18, e.data.length, true);
-		view.setUint32(offset + 22, e.data.length, true);
-		view.setUint16(offset + 26, e.name.length, true);
+		view.setUint32(offset + LOCAL.signature, LOCAL_SIGNATURE, true);
+		view.setUint16(offset + LOCAL.versionNeeded, VERSION, true);
+		view.setUint16(offset + LOCAL.flags, UTF8_FLAG, true);
+		view.setUint16(offset + LOCAL.method, STORED, true);
+		view.setUint16(offset + LOCAL.date, DOS_DATE_1980_01_01, true);
+		view.setUint32(offset + LOCAL.crc, e.crc, true);
+		view.setUint32(offset + LOCAL.compressedSize, e.data.length, true);
+		view.setUint32(offset + LOCAL.size, e.data.length, true);
+		view.setUint16(offset + LOCAL.nameLength, e.name.length, true);
 		out.set(e.name, offset + LOCAL_HEADER_SIZE);
 		out.set(e.data, offset + LOCAL_HEADER_SIZE + e.name.length);
 		offset += LOCAL_HEADER_SIZE + e.name.length + e.data.length;
 
-		view.setUint32(centralOffset, CENTRAL_SIGNATURE, true);
-		view.setUint16(centralOffset + 4, VERSION, true);
-		view.setUint16(centralOffset + 6, VERSION, true);
-		view.setUint16(centralOffset + 8, UTF8_FLAG, true);
-		view.setUint16(centralOffset + 10, STORED, true);
-		view.setUint16(centralOffset + 14, DOS_DATE_1980_01_01, true);
-		view.setUint32(centralOffset + 16, e.crc, true);
-		view.setUint32(centralOffset + 20, e.data.length, true);
-		view.setUint32(centralOffset + 24, e.data.length, true);
-		view.setUint16(centralOffset + 28, e.name.length, true);
-		view.setUint32(centralOffset + 42, localOffset, true);
+		view.setUint32(centralOffset + CENTRAL.signature, CENTRAL_SIGNATURE, true);
+		view.setUint16(centralOffset + CENTRAL.versionMade, VERSION, true);
+		view.setUint16(centralOffset + CENTRAL.versionNeeded, VERSION, true);
+		view.setUint16(centralOffset + CENTRAL.flags, UTF8_FLAG, true);
+		view.setUint16(centralOffset + CENTRAL.method, STORED, true);
+		view.setUint16(centralOffset + CENTRAL.date, DOS_DATE_1980_01_01, true);
+		view.setUint32(centralOffset + CENTRAL.crc, e.crc, true);
+		view.setUint32(centralOffset + CENTRAL.compressedSize, e.data.length, true);
+		view.setUint32(centralOffset + CENTRAL.size, e.data.length, true);
+		view.setUint16(centralOffset + CENTRAL.nameLength, e.name.length, true);
+		view.setUint32(centralOffset + CENTRAL.localOffset, localOffset, true);
 		out.set(e.name, centralOffset + CENTRAL_HEADER_SIZE);
 		centralOffset += CENTRAL_HEADER_SIZE + e.name.length;
 	}
 	view.setUint32(centralOffset, END_SIGNATURE, true);
-	view.setUint16(centralOffset + 8, prepared.length, true);
-	view.setUint16(centralOffset + 10, prepared.length, true);
-	view.setUint32(centralOffset + 12, centralSize, true);
-	view.setUint32(centralOffset + 16, localSize, true);
+	view.setUint16(centralOffset + END.entriesOnDisk, prepared.length, true);
+	view.setUint16(centralOffset + END.entryCount, prepared.length, true);
+	view.setUint32(centralOffset + END.centralSize, centralSize, true);
+	view.setUint32(centralOffset + END.centralOffset, localSize, true);
 	return { value: out };
 }
 
@@ -111,20 +139,20 @@ export function readZip(bytes: Uint8Array): Result<Map<string, Uint8Array>> {
 	const end = findEndRecord(view);
 	if (end < 0) return { error: INVALID };
 
-	const count = view.getUint16(end + 10, true);
-	let cursor = view.getUint32(end + 16, true);
+	const count = view.getUint16(end + END.entryCount, true);
+	let cursor = view.getUint32(end + END.centralOffset, true);
 	const decoder = new TextDecoder('utf-8', { fatal: true });
 	const files = new Map<string, Uint8Array>();
 	for (let i = 0; i < count; i++) {
 		if (cursor + CENTRAL_HEADER_SIZE > end || view.getUint32(cursor, true) !== CENTRAL_SIGNATURE) {
 			return { error: INVALID };
 		}
-		const method = view.getUint16(cursor + 10, true);
-		const size = view.getUint32(cursor + 24, true);
-		const nameLength = view.getUint16(cursor + 28, true);
-		const extraLength = view.getUint16(cursor + 30, true);
-		const commentLength = view.getUint16(cursor + 32, true);
-		const localOffset = view.getUint32(cursor + 42, true);
+		const method = view.getUint16(cursor + CENTRAL.method, true);
+		const size = view.getUint32(cursor + CENTRAL.size, true);
+		const nameLength = view.getUint16(cursor + CENTRAL.nameLength, true);
+		const extraLength = view.getUint16(cursor + CENTRAL.extraLength, true);
+		const commentLength = view.getUint16(cursor + CENTRAL.commentLength, true);
+		const localOffset = view.getUint32(cursor + CENTRAL.localOffset, true);
 		const nameStart = cursor + CENTRAL_HEADER_SIZE;
 		if (nameStart + nameLength > end) return { error: INVALID };
 		if (method !== STORED) return { error: 'Archive entries must be stored uncompressed.' };
@@ -146,8 +174,8 @@ export function readZip(bytes: Uint8Array): Result<Map<string, Uint8Array>> {
 		const dataStart =
 			localOffset +
 			LOCAL_HEADER_SIZE +
-			view.getUint16(localOffset + 26, true) +
-			view.getUint16(localOffset + 28, true);
+			view.getUint16(localOffset + LOCAL.nameLength, true) +
+			view.getUint16(localOffset + LOCAL.extraLength, true);
 		if (dataStart + size > bytes.length) return { error: INVALID };
 		files.set(name, bytes.subarray(dataStart, dataStart + size));
 		cursor = nameStart + nameLength + extraLength + commentLength;
