@@ -10,7 +10,7 @@ const MAX_TEXT_LENGTH = 1000;
 
 const ruleNotFound = () => jsonError('Rule not found.', 404);
 
-function parseRule(body: Record<string, unknown>): Result<{ name: string; text: string }> {
+export function parseRule(body: Record<string, unknown>): Result<{ name: string; text: string }> {
 	const name = parseName(body.name);
 	if ('error' in name) return name;
 	const text = typeof body.text === 'string' ? body.text.trim() : '';

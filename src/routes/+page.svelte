@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { ApiAction } from '#lib/api-action.svelte.js';
+	import BackupPanel from '#lib/components/BackupPanel.svelte';
 	import RatingButtons from '#lib/components/RatingButtons.svelte';
 	import type { Rating } from '#lib/rotation.js';
 
@@ -45,6 +46,8 @@
 			{/each}
 		</ul>
 	{/if}
+
+	<BackupPanel />
 
 	<form method="POST" action="/logout">
 		<button type="submit">Sign out</button>

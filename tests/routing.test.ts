@@ -1,3 +1,4 @@
+import { env } from 'cloudflare:workers';
 import { SELF } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { APP_PASSWORD } from './support/app';
@@ -116,5 +117,33 @@ describe('routing through the built worker', () => {
 		expect(imported.status).toBe(201);
 		expect(scan.status).toBe(200);
 		expect(scan.headers.get('content-type')).toBe('image/jpeg');
+	});
+
+	it('routes the archive export and import through the guard to the handlers', async () => {
+		const login = await SELF.fetch('https://woodshed.test/login/submit', {
+			method: 'POST',
+			headers: browserHeaders,
+			body: new URLSearchParams({ password: APP_PASSWORD }),
+			redirect: 'manual'
+		});
+		const cookie = login.headers.get('set-cookie')!.split(';')[0];
+		const headers = { cookie, origin: 'https://woodshed.test' };
+		await env.DB.exec('DELETE FROM tunes');
+		const { objects } = await env.SCANS.list();
+		if (objects.length) await env.SCANS.delete(objects.map((o) => o.key));
+
+		const unauthenticated = await SELF.fetch('https://woodshed.test/api/archive', {
+			redirect: 'manual'
+		});
+		const exported = await SELF.fetch('https://woodshed.test/api/archive', { headers });
+		const unconfirmed = await SELF.fetch('https://woodshed.test/api/archive', {
+			method: 'PUT',
+			headers,
+			body: await exported.arrayBuffer()
+		});
+
+		expect(unauthenticated.status).toBe(303);
+		expect(exported.headers.get('content-type')).toBe('application/zip');
+		expect(unconfirmed.status).toBe(409);
 	});
 });
