@@ -1,15 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { invalidateAll } from '$app/navigation';
-	import { CONFIRM_REPLACE } from '#lib/tune.js';
-
-	interface Summary {
-		error: string;
-		tunes: number;
-		simplifiedCharts: number;
-		practiceSessions: number;
-		rules: number;
-	}
+	import { CONFIRM_REPLACE, type ReplaceSummary } from '#lib/tune.js';
 
 	let busy = $state(false);
 	let error = $state<string | null>(null);
@@ -28,7 +20,7 @@
 		try {
 			let response = await put(file, false);
 			if (response.status === 409) {
-				const summary = (await response.json()) as Summary;
+				const summary = (await response.json()) as ReplaceSummary;
 				const counts = `${summary.tunes} Tunes, ${summary.simplifiedCharts} Simplified Charts, ${summary.rules} Rules, ${summary.practiceSessions} Practice Sessions`;
 				if (!confirm(`Replace ALL current data with this archive (${counts})?`)) return;
 				response = await put(file, true);

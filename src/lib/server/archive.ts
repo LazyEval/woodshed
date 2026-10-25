@@ -1,49 +1,30 @@
-import { asc } from 'drizzle-orm';
-import {
-	isRecord,
-	validateChart,
-	type Chart,
-	type GenerationRecord,
-	type SimplifiedChartOrigin
-} from '#lib/chart.js';
-import { calendarDateIn, isCalendarDate, isPracticedChart, isRating } from '#lib/rotation.js';
+import { asc, getTableColumns } from 'drizzle-orm';
+import { calendarDateIn } from '#lib/rotation.js';
 import { CONFIRM_REPLACE } from '#lib/tune.js';
 import type { Deps } from '#lib/server/deps.js';
+import {
+	FORMAT,
+	InvalidArchive,
+	VERSION,
+	readManifest,
+	type ArchivedTune,
+	type Manifest
+} from '#lib/server/archive-manifest.js';
 import { practiceSessions, rules, simplifiedCharts, tunes } from '#lib/server/db/schema.js';
 import { jsonError } from '#lib/server/http.js';
-import { IMAGE_TYPES, MAX_PAGE_BYTES, MAX_SCAN_PAGES, scanKey } from '#lib/server/scans.js';
+import { IMAGE_TYPES, MAX_PAGE_BYTES, scanKey } from '#lib/server/scans.js';
 import { readZip, writeZip } from '#lib/server/zip.js';
 
-const FORMAT = 'woodshed-archive';
-const VERSION = 1;
 const MANIFEST_NAME = 'manifest.json';
-const SAFE_ID = /^[\w-]{1,100}$/;
 const D1_MAX_BOUND_PARAMETERS = 100;
 const R2_MAX_DELETE_KEYS = 1000;
 
 type TuneRow = typeof tunes.$inferSelect;
 
-type ArchivedTune = Omit<TuneRow, 'scanPageCount' | 'scanVersion'> & { scanPages: string[] };
-type ArchivedSimplifiedChart = typeof simplifiedCharts.$inferSelect;
-type ArchivedPracticeSession = typeof practiceSessions.$inferSelect;
-type ArchivedRule = typeof rules.$inferSelect;
-
-interface Manifest {
-	format: typeof FORMAT;
-	version: typeof VERSION;
-	exportedAt: string;
-	tunes: ArchivedTune[];
-	simplifiedCharts: ArchivedSimplifiedChart[];
-	practiceSessions: ArchivedPracticeSession[];
-	rules: ArchivedRule[];
-}
-
 interface Archive {
 	manifest: Manifest;
 	scans: Map<string, Uint8Array>;
 }
-
-class InvalidArchive extends Error {}
 
 const archiveScanName = (tuneId: string, page: number) => scanKey(tuneId, 0, page);
 
@@ -96,201 +77,6 @@ export async function exportArchive(deps: Deps): Promise<Response> {
 	});
 }
 
-function field(source: Record<string, unknown>, name: string, where: string): unknown {
-	if (!(name in source)) throw new InvalidArchive(`${where} is missing "${name}".`);
-	return source[name];
-}
-
-function text(source: Record<string, unknown>, name: string, where: string): string {
-	const value = field(source, name, where);
-	if (typeof value !== 'string') throw new InvalidArchive(`${where} "${name}" must be text.`);
-	return value;
-}
-
-function nullableText(source: Record<string, unknown>, name: string, where: string) {
-	return field(source, name, where) === null ? null : text(source, name, where);
-}
-
-function integer(source: Record<string, unknown>, name: string, where: string): number {
-	const value = field(source, name, where);
-	if (!Number.isSafeInteger(value) || (value as number) < 0) {
-		throw new InvalidArchive(`${where} "${name}" must be a non-negative integer.`);
-	}
-	return value as number;
-}
-
-function nullableInteger(source: Record<string, unknown>, name: string, where: string) {
-	return field(source, name, where) === null ? null : integer(source, name, where);
-}
-
-function chartOf(value: unknown, where: string): Chart {
-	const chart = validateChart(value);
-	if ('error' in chart) throw new InvalidArchive(`${where} chart is invalid: ${chart.error}`);
-	return chart.value;
-}
-
-function records(value: unknown, where: string): Record<string, unknown>[] {
-	if (!Array.isArray(value) || !value.every(isRecord)) {
-		throw new InvalidArchive(`${where} must be a list of objects.`);
-	}
-	return value;
-}
-
-function uniqueIds(items: { id: string }[], where: string): Set<string> {
-	if (!items.every((item) => SAFE_ID.test(item.id))) {
-		throw new InvalidArchive(`${where} have invalid ids.`);
-	}
-	const ids = new Set(items.map((item) => item.id));
-	if (ids.size !== items.length) throw new InvalidArchive(`${where} have duplicate ids.`);
-	return ids;
-}
-
-function readTune(raw: Record<string, unknown>): ArchivedTune {
-	const where = 'A Tune';
-	const status = text(raw, 'sourceChartStatus', where);
-	if (status !== 'draft' && status !== 'verified') {
-		throw new InvalidArchive(`${where} has an unknown Source Chart status.`);
-	}
-	const verifiedChart = field(raw, 'verifiedChart', where);
-	const scanPages = field(raw, 'scanPages', where);
-	if (
-		!Array.isArray(scanPages) ||
-		scanPages.length > MAX_SCAN_PAGES ||
-		!scanPages.every((type) => IMAGE_TYPES.includes(type))
-	) {
-		throw new InvalidArchive(`${where} has invalid Scan pages.`);
-	}
-	if (typeof field(raw, 'shelved', where) !== 'boolean') {
-		throw new InvalidArchive(`${where} "shelved" must be true or false.`);
-	}
-	return {
-		id: text(raw, 'id', where),
-		title: text(raw, 'title', where),
-		composer: nullableText(raw, 'composer', where),
-		key: nullableText(raw, 'key', where),
-		sourceChart: chartOf(field(raw, 'sourceChart', where), where),
-		sourceChartStatus: status,
-		verifiedAt: nullableInteger(raw, 'verifiedAt', where),
-		verifiedChart: verifiedChart === null ? null : chartOf(verifiedChart, where),
-		shelved: raw.shelved as boolean,
-		scanPages: scanPages as string[],
-		createdAt: integer(raw, 'createdAt', where),
-		updatedAt: integer(raw, 'updatedAt', where)
-	};
-}
-
-function readGeneration(value: unknown): GenerationRecord | null {
-	if (value === null) return null;
-	const where = 'A generation record';
-	if (!isRecord(value)) throw new InvalidArchive(`${where} must be an object.`);
-	return {
-		rules: records(field(value, 'rules', where), `${where} rules`).map((rule) => ({
-			name: text(rule, 'name', where),
-			text: text(rule, 'text', where)
-		})),
-		note: nullableText(value, 'note', where),
-		reasons: records(field(value, 'reasons', where), `${where} reasons`).map((reason) => ({
-			barIndex: integer(reason, 'barIndex', where),
-			reason: text(reason, 'reason', where)
-		}))
-	};
-}
-
-function readSimplifiedChart(
-	raw: Record<string, unknown>,
-	tuneIds: Set<string>
-): ArchivedSimplifiedChart {
-	const where = 'A Simplified Chart';
-	const tuneId = text(raw, 'tuneId', where);
-	if (!tuneIds.has(tuneId)) throw new InvalidArchive(`${where} belongs to an unknown Tune.`);
-	const origin = text(raw, 'origin', where);
-	if (origin !== 'manual' && origin !== 'generated') {
-		throw new InvalidArchive(`${where} has an unknown origin.`);
-	}
-	const flaggedBars = field(raw, 'flaggedBars', where);
-	if (!Array.isArray(flaggedBars) || !flaggedBars.every((bar) => Number.isSafeInteger(bar))) {
-		throw new InvalidArchive(`${where} has invalid flagged bars.`);
-	}
-	return {
-		id: text(raw, 'id', where),
-		tuneId,
-		name: text(raw, 'name', where),
-		origin: origin as SimplifiedChartOrigin,
-		chart: chartOf(field(raw, 'chart', where), where),
-		generation: readGeneration(field(raw, 'generation', where)),
-		flaggedBars: flaggedBars as number[],
-		archivedAt: nullableInteger(raw, 'archivedAt', where),
-		createdAt: integer(raw, 'createdAt', where),
-		updatedAt: integer(raw, 'updatedAt', where)
-	};
-}
-
-function readPracticeSession(
-	raw: Record<string, unknown>,
-	tuneIds: Set<string>
-): ArchivedPracticeSession {
-	const where = 'A Practice Session';
-	const tuneId = text(raw, 'tuneId', where);
-	if (!tuneIds.has(tuneId)) throw new InvalidArchive(`${where} belongs to an unknown Tune.`);
-	const practicedOn = field(raw, 'practicedOn', where);
-	const rating = field(raw, 'rating', where);
-	const chart = field(raw, 'chart', where);
-	if (!isCalendarDate(practicedOn)) throw new InvalidArchive(`${where} has an invalid date.`);
-	if (!isRating(rating)) throw new InvalidArchive(`${where} has an invalid Rating.`);
-	if (chart !== null && !isPracticedChart(chart)) {
-		throw new InvalidArchive(`${where} has an invalid chart.`);
-	}
-	return {
-		id: text(raw, 'id', where),
-		tuneId,
-		practicedOn,
-		rating,
-		chart,
-		createdAt: integer(raw, 'createdAt', where)
-	};
-}
-
-function readRule(raw: Record<string, unknown>): ArchivedRule {
-	const where = 'A Rule';
-	return {
-		id: text(raw, 'id', where),
-		name: text(raw, 'name', where),
-		text: text(raw, 'text', where),
-		createdAt: integer(raw, 'createdAt', where),
-		updatedAt: integer(raw, 'updatedAt', where)
-	};
-}
-
-function readManifest(raw: unknown): Manifest {
-	if (!isRecord(raw) || raw.format !== FORMAT) {
-		throw new InvalidArchive('Archive is not a Woodshed archive.');
-	}
-	if (raw.version !== VERSION) {
-		throw new InvalidArchive(`Archive version ${String(raw.version)} is not supported.`);
-	}
-	const tuneList = records(raw.tunes, 'Tunes').map(readTune);
-	const tuneIds = uniqueIds(tuneList, 'Tunes');
-	const simplifiedChartList = records(raw.simplifiedCharts, 'Simplified Charts').map((chart) =>
-		readSimplifiedChart(chart, tuneIds)
-	);
-	const sessionList = records(raw.practiceSessions, 'Practice Sessions').map((session) =>
-		readPracticeSession(session, tuneIds)
-	);
-	const ruleList = records(raw.rules, 'Rules').map(readRule);
-	uniqueIds(simplifiedChartList, 'Simplified Charts');
-	uniqueIds(sessionList, 'Practice Sessions');
-	uniqueIds(ruleList, 'Rules');
-	return {
-		format: FORMAT,
-		version: VERSION,
-		exportedAt: text(raw, 'exportedAt', 'Archive'),
-		tunes: tuneList,
-		simplifiedCharts: simplifiedChartList,
-		practiceSessions: sessionList,
-		rules: ruleList
-	};
-}
-
 function parseArchive(bytes: Uint8Array): Archive {
 	const unzipped = readZip(bytes);
 	if ('error' in unzipped) throw new InvalidArchive(unzipped.error);
@@ -312,10 +98,25 @@ function parseArchive(bytes: Uint8Array): Archive {
 			const data = unzipped.value.get(name);
 			if (!data) throw new InvalidArchive(`Archive is missing ${name}.`);
 			if (data.length > MAX_PAGE_BYTES) throw new InvalidArchive(`${name} is too large.`);
+			if (!matchesImageType(data, tune.scanPages[page])) {
+				throw new InvalidArchive(`${name} is not a ${tune.scanPages[page]} image.`);
+			}
 			scans.set(name, data);
 		}
 	}
 	return { manifest, scans };
+}
+
+const IMAGE_SIGNATURES: Record<string, (bytes: Uint8Array) => boolean> = {
+	'image/jpeg': (b) => b[0] === 0xff && b[1] === 0xd8,
+	'image/png': (b) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47,
+	'image/webp': (b) =>
+		new TextDecoder().decode(b.subarray(0, 4)) === 'RIFF' &&
+		new TextDecoder().decode(b.subarray(8, 12)) === 'WEBP'
+};
+
+function matchesImageType(bytes: Uint8Array, type: string): boolean {
+	return IMAGE_SIGNATURES[type]?.(bytes) ?? false;
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -324,7 +125,8 @@ function chunk<T>(items: T[], size: number): T[][] {
 	return chunks;
 }
 
-const rowsPerInsert = (columns: number) => Math.floor(D1_MAX_BOUND_PARAMETERS / columns);
+const rowsPerInsert = (table: Parameters<typeof getTableColumns>[0]) =>
+	Math.floor(D1_MAX_BOUND_PARAMETERS / Object.keys(getTableColumns(table)).length);
 
 async function listScanKeys(deps: Deps): Promise<string[]> {
 	const keys: string[] = [];
@@ -374,10 +176,12 @@ async function replaceAll(deps: Deps, { manifest, scans }: Archive): Promise<voi
 			deps.db.delete(tunes),
 			...tuneRows.map((row) => deps.db.insert(tunes).values(row)),
 			...manifest.simplifiedCharts.map((row) => deps.db.insert(simplifiedCharts).values(row)),
-			...chunk(manifest.practiceSessions, rowsPerInsert(6)).map((rows) =>
+			...chunk(manifest.practiceSessions, rowsPerInsert(practiceSessions)).map((rows) =>
 				deps.db.insert(practiceSessions).values(rows)
 			),
-			...chunk(manifest.rules, rowsPerInsert(5)).map((rows) => deps.db.insert(rules).values(rows))
+			...chunk(manifest.rules, rowsPerInsert(rules)).map((rows) =>
+				deps.db.insert(rules).values(rows)
+			)
 		]);
 	} catch (error) {
 		await deleteScanKeys(deps, newKeys).catch(() => undefined);

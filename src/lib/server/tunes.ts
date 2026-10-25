@@ -29,7 +29,7 @@ function optionalText(value: unknown, name: string): Result<string | null> {
 	return { value: trimmed || null };
 }
 
-function parseFields(body: Record<string, unknown>): Result<TuneFields> {
+export function parseTuneFields(body: Record<string, unknown>): Result<TuneFields> {
 	if (typeof body.title !== 'string' || !body.title.trim()) return { error: 'Title is required.' };
 	if (body.title.trim().length > MAX_TEXT_LENGTH) return { error: 'Title is too long.' };
 
@@ -81,7 +81,7 @@ export async function listTunes(request: Request, deps: Deps): Promise<Response>
 export async function createTune(request: Request, deps: Deps): Promise<Response> {
 	const body = await readBody(request);
 	if ('error' in body) return jsonError(body.error, 400);
-	const fields = parseFields(body.value);
+	const fields = parseTuneFields(body.value);
 	if ('error' in fields) return jsonError(fields.error, 400);
 
 	const now = deps.clock.now().getTime();
@@ -109,7 +109,7 @@ export async function updateTune(request: Request, deps: Deps, id: string): Prom
 	const existing = await findTune(deps, id);
 	if (!existing) return tuneNotFound();
 
-	const fields = parseFields({ ...existing, ...body.value });
+	const fields = parseTuneFields({ ...existing, ...body.value });
 	if ('error' in fields) return jsonError(fields.error, 400);
 
 	const [tune] = await deps.db

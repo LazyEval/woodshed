@@ -10,7 +10,7 @@ import { createSimplifiedChart } from '#lib/server/simplified-charts.js';
 import { markChartVerified, saveSourceChart } from '#lib/server/tunes.js';
 import { readZip, writeZip } from '#lib/server/zip.js';
 import { createTestApp, jsonRequest, type TestApp } from './support/app';
-import { page, rowCount, uploadRequest } from './support/scan-upload';
+import { rowCount, uploadRequest } from './support/scan-upload';
 
 const chart: Chart = {
 	sections: [
@@ -32,6 +32,14 @@ const chart: Chart = {
 };
 
 const encoder = new TextEncoder();
+
+const JPEG_MAGIC = [0xff, 0xd8];
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47];
+
+function imagePage(label: string, type: 'image/jpeg' | 'image/png'): File {
+	const magic = type === 'image/png' ? PNG_MAGIC : JPEG_MAGIC;
+	return new File([new Uint8Array(magic), label], 'page', { type });
+}
 const decoder = new TextDecoder();
 
 async function json<T>(response: Response): Promise<T> {
@@ -41,7 +49,10 @@ async function json<T>(response: Response): Promise<T> {
 async function seed(app: TestApp, title: string) {
 	app.ai.willExtract({ title, composer: 'Kosma', key: 'Gm', chart });
 	const { id } = await json<{ id: string }>(
-		await importTune(uploadRequest([page(`${title}-0`), page(`${title}-1`, 'image/png')]), app.deps)
+		await importTune(
+			uploadRequest([imagePage(`${title}-0`, 'image/jpeg'), imagePage(`${title}-1`, 'image/png')]),
+			app.deps
+		)
 	);
 	await saveSourceChart(jsonRequest(`/api/tunes/${id}/chart`, 'PUT', { chart }), app.deps, id);
 	await markChartVerified(app.deps, id);
@@ -151,7 +162,7 @@ describe('export', () => {
 				)
 				.sort()
 		);
-		expect(decoder.decode(files.get(`scans/${id}/0`))).toBe('Autumn Leaves-0');
+		expect(decoder.decode(files.get(`scans/${id}/0`))).toContain('Autumn Leaves-0');
 		expect(manifest).toMatchObject({ format: 'woodshed-archive', version: 1 });
 		expect(manifest.tunes).toHaveLength(2);
 		expect(manifest.simplifiedCharts).toHaveLength(2);
@@ -172,6 +183,25 @@ describe('export', () => {
 });
 
 describe('import', () => {
+	it('removes the Scans it staged and keeps existing data when the swap fails', async () => {
+		const app = createTestApp();
+		await populate(app);
+		const { bytes } = await exported(app);
+		const before = await snapshot();
+		const failing = new Proxy(app.deps.db, {
+			get: (target, property, receiver) =>
+				property === 'batch'
+					? () => Promise.reject(new Error('swap failed'))
+					: Reflect.get(target, property, receiver)
+		});
+
+		await expect(importArchive(putArchive(bytes), { ...app.deps, db: failing })).rejects.toThrow(
+			'swap failed'
+		);
+
+		expect(await snapshot()).toEqual(before);
+	});
+
 	it('round-trips: export, wipe, import, export gives identical data and Scans', async () => {
 		const app = createTestApp();
 		const id = await populate(app);
@@ -187,7 +217,7 @@ describe('import', () => {
 		for (const [name, data] of before.files) expect(after.files.get(name)).toEqual(data);
 		const served = await getScanPage(app.deps, id, '1');
 		expect(served.headers.get('content-type')).toBe('image/png');
-		expect(await served.text()).toBe('Autumn Leaves-1');
+		expect(await served.text()).toContain('Autumn Leaves-1');
 	});
 
 	it('replaces all current data and removes old Scans', async () => {
@@ -216,7 +246,7 @@ describe('import', () => {
 		await importArchive(putArchive(bytes), app.deps);
 		await importArchive(putArchive(bytes), app.deps);
 
-		expect(await (await getScanPage(app.deps, id, '0')).text()).toBe('Autumn Leaves-0');
+		expect(await (await getScanPage(app.deps, id, '0')).text()).toContain('Autumn Leaves-0');
 		expect((await env.SCANS.list()).objects).toHaveLength(4);
 	});
 
@@ -260,6 +290,22 @@ describe('import', () => {
 			practiceSessions: [],
 			rules: []
 		};
+
+		async function expectManifestRejected(
+			app: TestApp,
+			manifest: unknown,
+			files: Map<string, Uint8Array>
+		) {
+			const extra = [...files]
+				.filter(([name]) => name !== 'manifest.json')
+				.map(([name, data]) => ({ name, data }));
+			const before = await snapshot();
+
+			const response = await importArchive(putArchive(archiveWith(manifest, extra)), app.deps);
+
+			expect(response.status).toBe(422);
+			expect(await snapshot()).toEqual(before);
+		}
 
 		it('a file that is not a zip', async () => {
 			await expectRejected(createTestApp(), encoder.encode('definitely not a zip file at all'));
@@ -332,6 +378,33 @@ describe('import', () => {
 			expect(files.size).toBeGreaterThan(1);
 			expect(response.status).toBe(422);
 			expect(await snapshot()).toEqual(before);
+		});
+
+		it('a Simplified Chart flagging a bar outside its chart', async () => {
+			const app = createTestApp();
+			await populate(app);
+			const { manifest, files } = await exported(app);
+			const charts = structuredClone(manifest.simplifiedCharts) as { flaggedBars: number[] }[];
+			charts[0].flaggedBars = [99];
+			await expectManifestRejected(app, { ...manifest, simplifiedCharts: charts }, files);
+		});
+
+		it('a Rule the API would refuse', async () => {
+			const app = createTestApp();
+			await populate(app);
+			const { manifest, files } = await exported(app);
+			const rules = structuredClone(manifest.rules) as { text: string }[];
+			rules[0].text = 'x'.repeat(1001);
+			await expectManifestRejected(app, { ...manifest, rules }, files);
+		});
+
+		it('a Scan page whose bytes are not the declared image type', async () => {
+			const app = createTestApp();
+			await populate(app);
+			const { manifest, files } = await exported(app);
+			const [name] = [...files.keys()].filter((key) => key.startsWith('scans/'));
+			files.set(name, encoder.encode('not an image'));
+			await expectManifestRejected(app, manifest, files);
 		});
 
 		it('a Practice Session of an unknown Tune', async () => {

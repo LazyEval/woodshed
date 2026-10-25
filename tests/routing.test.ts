@@ -1,3 +1,4 @@
+import { env } from 'cloudflare:workers';
 import { SELF } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { APP_PASSWORD } from './support/app';
@@ -127,6 +128,9 @@ describe('routing through the built worker', () => {
 		});
 		const cookie = login.headers.get('set-cookie')!.split(';')[0];
 		const headers = { cookie, origin: 'https://woodshed.test' };
+		await env.DB.exec('DELETE FROM tunes');
+		const { objects } = await env.SCANS.list();
+		if (objects.length) await env.SCANS.delete(objects.map((o) => o.key));
 
 		const unauthenticated = await SELF.fetch('https://woodshed.test/api/archive', {
 			redirect: 'manual'
